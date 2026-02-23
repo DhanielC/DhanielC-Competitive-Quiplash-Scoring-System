@@ -196,11 +196,3 @@ If you want help with CI, tests, or adding TypeScript, I can add them.
 Specify your project license here (e.g., MIT) or contact the repo owner for details.
 
 ---
-
-If you'd like, I can also:
-
-- Add a short usage example or demo data
-- Add a contributor guide or issue templates
-- Add CI workflow for builds and previews
-
-Tell me which of these you'd like next.
