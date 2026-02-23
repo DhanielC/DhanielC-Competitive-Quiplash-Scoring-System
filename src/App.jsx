@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const ADMIN_PASSWORD = "quiplash2025"; // ← Change this to update the password
+// Admin password is read from Vite env variable `VITE_ADMIN_PASSWORD`.
+// For security, do NOT hardcode secrets in source. Provide a `.env` file instead.
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "";
 const BASE_POINTS = [12, 10, 8, 6, 4, 2, 1, 0];
 const GAME_MULTIPLIERS = { 1: 1, 2: 1, 3: 2 };
 const MAX_TEAMS = 8;
