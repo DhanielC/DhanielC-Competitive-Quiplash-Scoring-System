@@ -1,16 +1,83 @@
-# React + Vite
+# Scoring System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A lightweight React + Vite scoring system web app template — the codebase for the "Scoring System" project. It includes a minimal React setup powered by Vite, ESLint, and a small app scaffold in `src/`.
 
-Currently, two official plugins are available:
+## Key Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Modern front-end stack: React + Vite for fast dev server and builds
+- ESLint configuration for consistent code style
+- Tiny, easy-to-extend starter structure for building scoring or dashboard apps
 
-## React Compiler
+## Prerequisites
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js 18+ and npm (or yarn)
+- Git (for cloning and version control)
 
-## Expanding the ESLint configuration
+## Quick Start
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. Install dependencies
+
+```bash
+npm install
+```
+
+2. Run the development server (Hot Module Replacement enabled)
+
+```bash
+npm run dev
+```
+
+3. Build for production
+
+```bash
+npm run build
+```
+
+4. Preview the production build locally
+
+```bash
+npm run preview
+```
+
+## Available NPM Scripts
+
+- `dev` — start Vite dev server
+- `build` — build production assets
+- `preview` — preview the production build locally
+- (add `lint` or `test` if you add tooling later)
+
+## Project Structure (high level)
+
+- `index.html` — app entry HTML
+- `package.json` — scripts & dependencies
+- `vite.config.js` — Vite config
+- `src/` — React source files
+	- `src/main.jsx` — app bootstrap
+	- `src/App.jsx` — main app component
+	- `src/assets/` — images/icons
+
+## How to contribute
+
+1. Fork the repo and create a feature branch
+2. Make changes and run the dev server locally
+3. Open a pull request with a clear description of the change
+
+If you want help with CI, tests, or adding TypeScript, I can add them.
+
+## Troubleshooting
+
+- If you see authentication errors when pushing, configure `gh auth login`, use an SSH key, or create a GitHub Personal Access Token and configure your git credential manager.
+
+## License
+
+Specify your project license here (e.g., MIT) or contact the repo owner for details.
+
+---
+
+If you'd like, I can also:
+
+- Add a short usage example or demo data
+- Add a contributor guide or issue templates
+- Add CI workflow for builds and previews
+
+Tell me which of these you'd like next.
