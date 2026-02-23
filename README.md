@@ -1,4 +1,4 @@
-# Scoring System
+# Competitive Quiplash Scoring System
 
 A lightweight React + Vite scoring system web app template — the codebase for the "Scoring System" project. It includes a minimal React setup powered by Vite, ESLint, and a small app scaffold in `src/`.
 
