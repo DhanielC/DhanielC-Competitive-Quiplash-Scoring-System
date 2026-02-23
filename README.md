@@ -121,12 +121,6 @@ This repo does not include a license by default. Add a `LICENSE` file (for examp
 
 ---
 
-If you'd like, I can also:
-- add this README to the repo (done),
-- update the app's header to show "Formula Q Championship 2026", or
-- create a printable PDF of the Official Rulebook.
-
-Made for Formula Q — good luck and happy racing.
 # Competitive Quiplash Scoring System
 
 A lightweight React + Vite scoring system web app template — the codebase for the "Scoring System" project. It includes a minimal React setup powered by Vite, ESLint, and a small app scaffold in `src/`.
