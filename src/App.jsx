@@ -46,6 +46,8 @@ const ICONS = {
   trash:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
   lock:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
   upload:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+  menu:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
+  flag:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`,
 };
 
 function Ico({ name, size=16, color, style:sx={} }) {
@@ -138,7 +140,35 @@ function rankTeams(teams) {
 
 function phaseOf(id) { return PHASES.find(p=>p.id===id)||PHASES[0]; }
 
-// ─── STORAGE + SYNC ───────────────────────────────────────────────────────────
+// ─── STORAGE + SYNC (GitHub Gist) ────────────────────────────────────────────
+// Requires env vars: VITE_GITHUB_TOKEN and VITE_GIST_ID
+// Falls back to localStorage if env vars are missing (dev mode)
+const GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN || "";
+const GIST_ID      = import.meta.env.VITE_GIST_ID || "";
+const GIST_FILE    = "quiplash_state.json";
+const USE_GIST     = !!(GITHUB_TOKEN && GIST_ID);
+const POLL_MS      = 3000; // public viewers poll every 3s
+
+async function gistRead() {
+  const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+    headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: "application/vnd.github.v3+json" },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error("Gist read failed");
+  const data = await r.json();
+  const raw = data.files?.[GIST_FILE]?.content;
+  if (!raw) throw new Error("File not found in gist");
+  return JSON.parse(raw);
+}
+
+async function gistWrite(state) {
+  await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+    method: "PATCH",
+    headers: { Authorization: `token ${GITHUB_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(state) } } }),
+  });
+}
+
 function merge(base,over) {
   const r={...base};
   for (const k of Object.keys(over)) {
@@ -151,20 +181,55 @@ function merge(base,over) {
 
 function useStore() {
   const [state,setRaw]=useState(()=>{
-    try { const raw=localStorage.getItem(STORAGE_KEY); if(raw) return merge(mkDefault(),JSON.parse(raw)); } catch{}
+    try {
+      const raw=localStorage.getItem(STORAGE_KEY);
+      if(raw) return merge(mkDefault(),JSON.parse(raw));
+    } catch{}
     return mkDefault();
   });
+  const [gistLoaded,setGistLoaded]=useState(false);
+
+  // Initial load from Gist
+  useEffect(()=>{
+    if(!USE_GIST){setGistLoaded(true);return;}
+    gistRead().then(remote=>{
+      const merged=merge(mkDefault(),remote);
+      setRaw(merged);
+      try{localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));}catch{}
+      setGistLoaded(true);
+    }).catch(()=>setGistLoaded(true));
+  },[]);
+
+  // Poll for remote changes (public viewers stay in sync)
+  useEffect(()=>{
+    if(!USE_GIST||!gistLoaded) return;
+    const id=setInterval(()=>{
+      gistRead().then(remote=>{
+        const merged=merge(mkDefault(),remote);
+        setRaw(prev=>{
+          // Only update if something changed (avoid needless re-renders)
+          if(JSON.stringify(prev)===JSON.stringify(merged)) return prev;
+          try{localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));}catch{}
+          return merged;
+        });
+      }).catch(()=>{});
+    },POLL_MS);
+    return ()=>clearInterval(id);
+  },[gistLoaded]);
 
   const setState=useCallback((fn)=>{
     setRaw(prev=>{
       const next=typeof fn==="function"?fn(prev):fn;
-      try { localStorage.setItem(STORAGE_KEY,JSON.stringify(next)); } catch{}
+      try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch{}
+      if(USE_GIST) gistWrite(next).catch(()=>{});
       return next;
     });
   },[]);
 
+  // localStorage cross-tab sync (fallback / local dev)
   useEffect(()=>{
-    const h=(e)=>{ if(e.key===STORAGE_KEY&&e.newValue) { try{setRaw(JSON.parse(e.newValue));}catch{} } };
+    if(USE_GIST) return;
+    const h=(e)=>{ if(e.key===STORAGE_KEY&&e.newValue){try{setRaw(JSON.parse(e.newValue));}catch{}} };
     window.addEventListener("storage",h);
     return ()=>window.removeEventListener("storage",h);
   },[]);
@@ -526,46 +591,38 @@ function CoachChampionshipBoard({state,t,vis}) {
   const rankColors=["#f7c948","#b0b0b0","#cd7f32"];
   return (
     <div style={{width:"100%",maxWidth:560,margin:"0 auto"}}>
-      <div style={{textAlign:"center",marginBottom:20}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",color:t.accent,marginBottom:4}}>
-          <Ico name="trophy" size={14} color={t.accent} /> Coach Championship Cup
-        </div>
+      <div style={{textAlign:"center",marginBottom:16}}>
         <div style={{fontSize:12,color:t.sub}}>Ranked by Meta Bonus Points · Ties broken by fewest strikes</div>
       </div>
-      {sorted.map((tm,i)=>{
-        const bon=teamBonus(tm);
-        const totalStrikes=(tm.strikes||[0,0,0]).reduce((a,b)=>a+b,0);
-        const isFirst=i===0;
-        return (
-          <div key={tm.id} style={{display:"grid",gridTemplateColumns:"36px 44px 1fr 80px 72px",alignItems:"center",gap:10,padding:"12px 16px",borderRadius:12,background:isFirst?t.accent+"15":t.surface,border:`1px solid ${isFirst?t.accent+"44":t.border}`,marginBottom:6,opacity:vis?1:0,transform:vis?"translateX(0)":"translateX(-20px)",transition:`all .5s ease ${.1+i*.06}s`}}>
-            {/* Rank */}
-            <div style={{display:"flex",justifyContent:"center"}}>
-              {i<3
-                ? <Ico name="medal" size={22} color={rankColors[i]} />
-                : <span style={{fontWeight:800,fontSize:14,color:t.sub,textAlign:"center"}}>{i+1}</span>
-              }
+      <div style={{display:"grid",gridTemplateColumns:"36px 44px 1fr 80px 72px",gap:10,padding:"0 16px 8px",fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",borderBottom:`1px solid ${t.border}`}}>
+        <div>#</div><div></div><div>Coach</div><div style={{textAlign:"center"}}>Bonus</div><div style={{textAlign:"center"}}>Strikes</div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:6}}>
+        {sorted.map((tm,i)=>{
+          const bon=teamBonus(tm);
+          const totalStrikes=(tm.strikes||[0,0,0]).reduce((a,b)=>a+b,0);
+          const isFirst=i===0;
+          return (
+            <div key={tm.id} style={{display:"grid",gridTemplateColumns:"36px 44px 1fr 80px 72px",alignItems:"center",gap:10,padding:"12px 16px",borderRadius:12,background:isFirst?t.accent+"15":t.surface,border:`1px solid ${isFirst?t.accent+"44":t.border}`,opacity:vis?1:0,transform:vis?"translateX(0)":"translateX(-20px)",transition:`all .5s ease ${.1+i*.06}s`}}>
+              <div style={{display:"flex",justifyContent:"center"}}>
+                {i<3?<Ico name="medal" size={22} color={rankColors[i]} />:<span style={{fontWeight:800,fontSize:14,color:t.sub,textAlign:"center"}}>{i+1}</span>}
+              </div>
+              <Av src={tm.coachAvatar||tm.teamLogo} name={tm.coachName||tm.name} size={40} round />
+              <div style={{minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:14,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.coachName||"(No Coach)"}</div>
+                <div style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{tm.name}</div>
+              </div>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontWeight:900,fontSize:22,color:bon>0?"#22c55e":t.sub,lineHeight:1}}>{bon}</div>
+              </div>
+              <div style={{textAlign:"center"}}>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:3}}><StrikePips count={totalStrikes} size={8} /></div>
+                <div style={{fontWeight:700,fontSize:12,color:totalStrikes>0?"#ef4444":t.sub,lineHeight:1}}>{totalStrikes}</div>
+              </div>
             </div>
-            {/* Avatar */}
-            <Av src={tm.coachAvatar||tm.teamLogo} name={tm.coachName||tm.name} size={40} round />
-            {/* Name + Team */}
-            <div style={{minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:14,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.coachName||"(No Coach)"}</div>
-              <div style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{tm.name}</div>
-            </div>
-            {/* Bonus Points */}
-            <div style={{textAlign:"center"}}>
-              <div style={{fontWeight:900,fontSize:22,color:bon>0?"#22c55e":t.sub,lineHeight:1}}>{bon}</div>
-              <div style={{fontSize:10,color:t.sub,marginTop:2,fontWeight:600,letterSpacing:.3}}>BONUS</div>
-            </div>
-            {/* Strikes */}
-            <div style={{textAlign:"center"}}>
-              <div style={{display:"flex",justifyContent:"center",marginBottom:3}}><StrikePips count={totalStrikes} size={8} /></div>
-              <div style={{fontWeight:700,fontSize:12,color:totalStrikes>0?"#ef4444":t.sub,lineHeight:1}}>{totalStrikes}</div>
-              <div style={{fontSize:10,color:t.sub,marginTop:1,fontWeight:600,letterSpacing:.3}}>STRIKES</div>
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -631,13 +688,111 @@ function Podium({state,t}) {
   );
 }
 
+// ─── PUBLIC SIDEBAR ───────────────────────────────────────────────────────────
+function PublicSidebar({state,t,viewPhaseId,onAdminClick,onPhaseJump}) {
+  const [open,setOpen]=useState(false);
+  const liveIdx=PHASES.findIndex(p=>p.id===state.currentPhase);
+  const viewIdx=PHASES.findIndex(p=>p.id===(viewPhaseId||state.currentPhase));
+
+  const phaseIcon=(ph)=>{
+    if(ph.type==="setup")  return "flag";
+    if(ph.type==="draft")  return "clipboard";
+    if(ph.type==="game")   return "play";
+    if(ph.type==="podium") return "trophy";
+    return "play";
+  };
+
+  return (
+    <>
+      {/* Toggle button — top right */}
+      <button
+        onClick={()=>setOpen(o=>!o)}
+        style={{position:"fixed",top:14,right:14,zIndex:9998,width:38,height:38,borderRadius:10,border:`1px solid ${t.border}`,background:t.isDark?"rgba(0,0,0,.75)":"rgba(255,255,255,.88)",color:t.sub,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(10px)"}}
+      >
+        <Ico name={open?"x":"menu"} size={18} />
+      </button>
+
+      {/* Backdrop */}
+      {open&&<div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:9996,background:"rgba(0,0,0,.35)",backdropFilter:"blur(2px)"}} />}
+
+      {/* Drawer */}
+      <div style={{position:"fixed",top:0,right:0,bottom:0,zIndex:9997,width:260,background:t.isDark?"#0d0d12":"#f0f0f5",borderLeft:`1px solid ${t.border}`,display:"flex",flexDirection:"column",transform:open?"translateX(0)":"translateX(100%)",transition:"transform .25s cubic-bezier(.4,0,.2,1)",boxShadow:open?"-8px 0 32px rgba(0,0,0,.25)":"none"}}>
+
+        {/* Header */}
+        <div style={{padding:"18px 16px 12px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontWeight:800,fontSize:13,color:t.accent,letterSpacing:.5}}>PHASE NAVIGATOR</div>
+            <div style={{fontSize:11,color:t.sub,marginTop:2}}>Jump to a completed phase</div>
+          </div>
+          <button onClick={()=>setOpen(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:t.sub,padding:4,display:"flex"}}>
+            <Ico name="x" size={16} />
+          </button>
+        </div>
+
+        {/* Phase list */}
+        <div style={{flex:1,overflowY:"auto",padding:"8px 8px"}}>
+          {PHASES.map((ph,i)=>{
+            const isViewing=ph.id===(viewPhaseId||state.currentPhase);
+            const isLive=ph.id===state.currentPhase;
+            const isPast=i<liveIdx;
+            const isFuture=i>liveIdx;
+            const isClickable=isPast||isLive;
+            return (
+              <div key={ph.id}
+                onClick={()=>{ if(!isClickable) return; onPhaseJump(ph.id); setOpen(false); }}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:9,marginBottom:2,
+                  cursor:isClickable?"pointer":"default",
+                  background:isViewing?t.accent+"20":"transparent",
+                  border:`1px solid ${isViewing?t.accent+"44":"transparent"}`,
+                  opacity:isFuture?.3:1,
+                }}
+                onMouseEnter={e=>{ if(isClickable&&!isViewing) e.currentTarget.style.background=t.isDark?"rgba(255,255,255,.05)":"rgba(0,0,0,.05)"; }}
+                onMouseLeave={e=>{ if(!isViewing) e.currentTarget.style.background="transparent"; }}
+              >
+                <div style={{width:22,height:22,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+                  background:isViewing?t.accent:isPast?"#22c55e22":t.isDark?"rgba(255,255,255,.06)":"rgba(0,0,0,.06)",
+                  border:`2px solid ${isViewing?t.accent:isPast?"#22c55e":t.border}`,
+                  color:isViewing?(t.isDark?"#111":"#fff"):isPast?"#22c55e":t.sub,
+                }}>
+                  {isPast&&!isViewing?<Ico name="check" size={10} />:<Ico name={phaseIcon(ph)} size={10} />}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:isViewing?700:500,color:isViewing?t.accent:isFuture?t.sub:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ph.label}</div>
+                  {ph.game===3&&<div style={{fontSize:10,color:t.sub}}>×2 pts</div>}
+                </div>
+                {isLive&&<span style={{fontSize:9,fontWeight:700,color:"#22c55e",background:"rgba(34,197,94,.15)",padding:"2px 6px",borderRadius:8,flexShrink:0}}>LIVE</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Admin button at bottom */}
+        <div style={{padding:"12px 8px",borderTop:`1px solid ${t.border}`}}>
+          <button onClick={()=>{onAdminClick();setOpen(false);}}
+            style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:9,border:`1px solid ${t.border}`,background:"transparent",color:t.sub,fontWeight:600,fontSize:13,cursor:"pointer"}}>
+            <Ico name="lock" size={15} /> Admin Panel
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── PUBLIC VIEW ─────────────────────────────────────────────────────────────
-function PublicView({state}) {
+function PublicView({state,onAdminClick}) {
   const t=getTheme(state);
-  const phase=phaseOf(state.currentPhase);
+  // Local phase override for navigation — doesn't touch global state
+  const [viewPhaseId,setViewPhaseId]=useState(null);
+  const phase=phaseOf(viewPhaseId||state.currentPhase);
   const [showCoach,setShowCoach]=useState(false);
-  if (phase.type==="podium") return <Podium state={state} t={t} />;
-  if (phase.type==="setup")  return <PreGamePublic state={state} t={t} />;
+
+  // When admin moves to a new phase, snap back to live view
+  useEffect(()=>{ setViewPhaseId(null); },[state.currentPhase]);
+
+  const handlePhaseJump=(id)=>setViewPhaseId(id);
+
+  if (phase.type==="podium") return <><Podium state={state} t={t} /><PublicSidebar state={state} t={t} viewPhaseId={viewPhaseId} onAdminClick={onAdminClick} onPhaseJump={handlePhaseJump} /></>;
+  if (phase.type==="setup")  return <><PreGamePublic state={state} t={t} /><PublicSidebar state={state} t={t} viewPhaseId={viewPhaseId} onAdminClick={onAdminClick} onPhaseJump={handlePhaseJump} /></>;
   const ranked=rankTeams(state.teams);
   const medalColor=["#f7c948","#b0b0b0","#cd7f32"];
   const isDraft=phase.type==="draft";
@@ -649,7 +804,10 @@ function PublicView({state}) {
     const sb=(b.strikes||[0,0,0]).reduce((x,y)=>x+y,0);
     return sa-sb;
   });
+  const coachRankColors=["#f7c948","#b0b0b0","#cd7f32"];
   return (
+    <>
+    <PublicSidebar state={state} t={t} viewPhaseId={viewPhaseId} onAdminClick={onAdminClick} onPhaseJump={handlePhaseJump} />
     <div style={{minHeight:"100vh",background:t.bg,color:t.text}}>
       <div style={{textAlign:"center",padding:"32px 20px 20px"}}>
         {state.tournamentLogo&&<img src={state.tournamentLogo} alt="" style={{height:58,objectFit:"contain",marginBottom:12}} />}
@@ -668,17 +826,17 @@ function PublicView({state}) {
       </div>
       {isDraft&&<DraftPublic state={state} t={t} phase={phase} />}
       <div style={{maxWidth:820,margin:"0 auto",padding:"0 16px 40px"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
-          <div style={{display:"flex",gap:5}}>
-            <button onClick={()=>setShowCoach(false)} style={bSt(!showCoach?t.accent:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",!showCoach?(t.isDark?"#111":"#fff"):t.sub,{padding:"5px 13px",fontSize:11})}>
-              <Ico name="trophy" size={12} /> Teams
-            </button>
-            <button onClick={()=>setShowCoach(true)} style={bSt(showCoach?t.accent2:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",showCoach?"#fff":t.sub,{padding:"5px 13px",fontSize:11})}>
-              <Ico name="star" size={12} /> Coach Cup
-            </button>
-          </div>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:10}}>
+          <button onClick={()=>setShowCoach(false)} style={bSt(!showCoach?t.accent:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",!showCoach?(t.isDark?"#111":"#fff"):t.sub,{padding:"5px 13px",fontSize:11})}>
+            <Ico name="trophy" size={12} /> Teams
+          </button>
+          <button onClick={()=>setShowCoach(true)} style={bSt(showCoach?t.accent2:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",showCoach?"#fff":t.sub,{padding:"5px 13px",fontSize:11})}>
+            <Ico name="star" size={12} /> Coach Cup
+          </button>
         </div>
-        {!showCoach?(
+
+        {/* ── TEAMS LEADERBOARD ── */}
+        {!showCoach&&(
           <>
             <div style={{display:"grid",gridTemplateColumns:"44px 1fr 72px 68px 56px",gap:8,padding:"0 12px 8px",fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",borderBottom:`1px solid ${t.border}`}}>
               <div>#</div><div>Team</div><div style={{textAlign:"right"}}>Pts</div><div style={{textAlign:"center"}}>Strikes</div><div style={{textAlign:"right"}}>Bonus</div>
@@ -712,42 +870,43 @@ function PublicView({state}) {
             </div>
             <p style={{textAlign:"center",marginTop:18,fontSize:11,color:t.sub}}>Tiebreaker: Total Bonus Points · Game 3 = ×2 pts</p>
           </>
-        ):(
+        )}
+
+        {/* ── COACH CUP — matches Teams table style ── */}
+        {showCoach&&(
           <>
-            <div style={{fontSize:12,color:t.sub,textAlign:"center",marginBottom:12}}>Coach Championship Cup · Most Meta Bonus Points wins</div>
-            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <div style={{display:"grid",gridTemplateColumns:"44px 1fr 72px 68px 56px",gap:8,padding:"0 12px 8px",fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",borderBottom:`1px solid ${t.border}`}}>
+              <div>#</div><div>Coach</div><div style={{textAlign:"right"}}>Bonus</div><div style={{textAlign:"center"}}>Strikes</div><div></div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:6}}>
               {coachSorted.map((tm,i)=>{
                 const bon=teamBonus(tm);
                 const totalStrikes=(tm.strikes||[0,0,0]).reduce((a,b)=>a+b,0);
-                const rankColors=["#f7c948","#b0b0b0","#cd7f32"];
                 return (
-                  <div key={tm.id} style={{display:"grid",gridTemplateColumns:"32px 40px 1fr 72px 66px",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,background:i===0?t.accent+"15":t.surface,border:`1px solid ${i===0?t.accent+"44":t.border}`}}>
-                    <div style={{display:"flex",justifyContent:"center"}}>
-                      {i<3?<Ico name="medal" size={20} color={rankColors[i]} />:<span style={{fontWeight:800,fontSize:13,color:t.sub,textAlign:"center"}}>{i+1}</span>}
-                    </div>
-                    <Av src={tm.coachAvatar||tm.teamLogo} name={tm.coachName||tm.name} size={34} round />
-                    <div style={{minWidth:0}}>
-                      <div style={{fontWeight:700,fontSize:13,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.coachName||"(No Coach)"}</div>
-                      <div style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.name}</div>
-                    </div>
+                  <div key={tm.id} style={{display:"grid",gridTemplateColumns:"44px 1fr 72px 68px 56px",gap:8,padding:"10px 12px",borderRadius:10,background:t.surface,border:`1px solid ${i===0?t.accent+"44":t.border}`,alignItems:"center"}}>
                     <div style={{textAlign:"center"}}>
-                      <div style={{fontWeight:900,fontSize:20,color:bon>0?"#22c55e":t.sub,lineHeight:1}}>{bon}</div>
-                      <div style={{fontSize:10,color:t.sub,fontWeight:600,letterSpacing:.3}}>BONUS</div>
+                      {i<3?<Ico name="medal" size={20} color={coachRankColors[i]} />:<span style={{fontWeight:700,color:t.sub,fontSize:14}}>{i+1}</span>}
                     </div>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{display:"flex",justifyContent:"center",marginBottom:2}}><StrikePips count={totalStrikes} size={7} /></div>
-                      <div style={{fontWeight:700,fontSize:12,color:totalStrikes>0?"#ef4444":t.sub,lineHeight:1}}>{totalStrikes}</div>
-                      <div style={{fontSize:10,color:t.sub,fontWeight:600,letterSpacing:.3}}>STRIKES</div>
+                    <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+                      <Av src={tm.coachAvatar||tm.teamLogo} name={tm.coachName||tm.name} size={36} round />
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:t.text}}>{tm.coachName||"(No Coach)"}</div>
+                        <div style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{tm.name}</div>
+                      </div>
                     </div>
+                    <div style={{textAlign:"right",fontWeight:800,fontSize:22,color:i===0?t.accent:bon>0?"#22c55e":t.sub}}>{bon}</div>
+                    <div style={{display:"flex",justifyContent:"center"}}><StrikePips count={totalStrikes} /></div>
+                    <div style={{textAlign:"right",fontWeight:700,fontSize:13,color:totalStrikes>0?"#ef4444":t.sub}}>{totalStrikes>0?`×${totalStrikes}`:""}</div>
                   </div>
                 );
               })}
             </div>
-            <p style={{textAlign:"center",marginTop:14,fontSize:11,color:t.sub}}>Tiebreaker: Fewest total strikes</p>
+            <p style={{textAlign:"center",marginTop:18,fontSize:11,color:t.sub}}>Ranked by Meta Bonus Points · Tiebreaker: Fewest strikes</p>
           </>
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -1401,6 +1560,11 @@ export default function App() {
   const [view,setView]=useState("public");
   const t=getTheme(state);
 
+  const handleAdminClick=()=>{
+    if(auth) setView("admin");
+    else setView("login");
+  };
+
   const css=`
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     *,*::before,*::after{box-sizing:border-box;}
@@ -1419,12 +1583,7 @@ export default function App() {
   return (
     <>
       <style>{css}</style>
-      {view==="public"&&(
-        <button onClick={()=>{if(auth)setView("admin");else setView("login");}}
-          style={{position:"fixed",bottom:12,right:12,zIndex:9999,padding:"5px 11px",borderRadius:18,border:`1px solid ${t.border}`,background:t.isDark?"rgba(0,0,0,.8)":"rgba(255,255,255,.92)",color:t.sub,fontSize:11,fontWeight:600,cursor:"pointer",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",gap:5}}>
-          <Ico name="lock" size={11} /> Admin
-        </button>
-      )}
+      {/* Admin/login nav pill — only visible when in admin/login view */}
       {view!=="public"&&(
         <div style={{position:"fixed",top:10,left:"50%",transform:"translateX(-50%)",zIndex:9999,display:"flex",gap:3,background:t.isDark?"rgba(0,0,0,.88)":"rgba(255,255,255,.94)",padding:"4px 5px",borderRadius:24,backdropFilter:"blur(12px)",border:`1px solid ${t.border}`}}>
           <button onClick={()=>setView("public")} style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:view==="public"?t.accent:"transparent",color:view==="public"?(t.isDark?"#111":"#fff"):t.sub}}>Public</button>
@@ -1432,7 +1591,7 @@ export default function App() {
           {!auth&&<button onClick={()=>setView("login")} style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,color:t.sub}}>Login</button>}
         </div>
       )}
-      {view==="public"&&<PublicView state={state} />}
+      {view==="public"&&<PublicView state={state} onAdminClick={handleAdminClick} />}
       {view==="login"&&!auth&&<Login t={t} onLogin={()=>{setAuth(true);setView("admin");}} />}
       {view==="admin"&&auth&&<Admin state={state} setState={setState} t={t} onLogout={()=>{setAuth(false);setView("public");}} />}
     </>

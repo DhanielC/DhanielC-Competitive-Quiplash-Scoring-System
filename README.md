@@ -196,3 +196,29 @@ If you want help with CI, tests, or adding TypeScript, I can add them.
 Specify your project license here (e.g., MIT) or contact the repo owner for details.
 
 ---
+
+## Gist storage & deployment (live state)
+
+This app can persist the tournament state to a GitHub Gist so the public view can poll for live updates.
+
+Quick summary:
+
+- Create a secret Gist named `quiplash_state.json` containing an empty object (`{}`).
+- Create a GitHub Personal Access Token with the `gist` scope.
+- Provide the following environment variables to the app:
+
+```env
+VITE_ADMIN_PASSWORD=your_admin_password_here
+VITE_GITHUB_TOKEN=ghp_your_token_here
+VITE_GIST_ID=your_gist_id_here
+```
+
+- When `VITE_GITHUB_TOKEN` and `VITE_GIST_ID` are present the app will:
+  - Load the JSON from the Gist on startup (merging with defaults).
+  - Poll the Gist every 3 seconds and update the UI when changes are detected (public viewers).
+  - Persist admin changes back to the Gist when the admin modifies state.
+
+- If the env vars are missing (local dev), the app falls back to `localStorage` and uses cross-tab events to sync.
+
+See the project `src/App.jsx` `useStore` implementation for details.
+
