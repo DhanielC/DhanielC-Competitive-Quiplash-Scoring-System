@@ -5,220 +5,110 @@
 This repository hosts the Formula Q Championship 2026 web app — a live public stream view and an admin dashboard to manage teams, drafts, scoring, bans, and results for a Competitive Ranked Quiplash 3 tournament.
 
 ## Table of Contents
-- About
-- Quickstart
-- Using the App
-- Rules (summary)
-  - The Paddock (Team Dynamics)
-  - Championship Point System
-  - Three Strikes (Banned Word System)
-  - Meta Word Pool & Collision Rule
-  - Gameplay Flow & Comms Rules
-  - Game-by-Game Breakdown
-  - Tiebreakers
-- Contributing
-- License
+* About
+* Quickstart
+* Environment Variables
+* Using the App
+* Rules (summary)
+    * The Paddock (Team Dynamics)
+    * Championship Point System
+    * Three Strikes (Banned Word System)
+    * Meta Word Pool & Collision Rule
+    * Gameplay Flow & Comms Rules
+    * Tiebreakers
+* Storage & Sync (Supabase)
+
+---
 
 ## About
 
-Formula Q Championship 2026 is a structured, competitive Quiplash 3 tournament for 16 players randomized into 8 two-person teams (Player + Coach). The goal is to accumulate the most Championship Points across three games while managing banned words, strikes, and meta-word bonus mechanics.
+Formula Q Championship 2026 is a structured, competitive Quiplash 3 tournament for 16 players randomized into 8 two-person teams (Player + Coach). The goal is to accumulate the most Championship Points across three games while managing banned words, strikes, and meta-word bonus mechanics. 
 
 This repository contains the scoreboard and admin interface used by Race Control to run the event, publish to the public stream, and manage scoring in real time.
+
+---
 
 ## Quickstart (local)
 
 Install dependencies and run the Vite dev server:
 
-```bash
 npm install
 npm run dev
-```
 
 Open the app in your browser (Vite defaults to http://localhost:5173).
 
+---
+
+## Environment Variables
+
+To fully utilize the app's features, including the admin panel and live syncing, create a `.env` file in your root directory and configure the following variables:
+
+* VITE_ADMIN_PASSWORD: Secures the admin dashboard.
+* VITE_SUPABASE_URL: Your Supabase project URL, required for live state syncing.
+* VITE_SUPABASE_ANON_KEY: Your Supabase anonymous key.
+* VITE_REGISTRATION_FORM_URL: The link attached to the "Register" button in the public sidebar.
+* VITE_REGISTRATION_LOCKED: Set to "true" to lock and disable the public registration button.
+
+---
+
 ## Using the App
 
-- Public view: Live scoreboard visible to viewers. Shows tournament name, active phase, games, and standings.
-- Admin view: Requires admin access. Manage phases, scoring, strikes, meta/draft words, and team roster.
-- Pre-game team popup: Click a team card in the Pre-Game view to open a modal with player/coach details.
+* Public view: Live scoreboard visible to viewers. Shows tournament name, active phase, games, team standings, and the Coach Championship.
+* Admin view: Requires the admin password. Manage phases, drag-and-drop scoring, strikes, meta/draft words, settings, and the team roster.
+* Pre-game team popup: Click a team card in the Pre-Game view to open a modal with player/coach details and team quotes.
+
+---
 
 ## Rules (summary)
 
 ### 1. The Paddock (Team Dynamics)
-- 16 players → randomized into 8 teams.
-- Each team has two roles:
-  - Player (Driver): Submits answers on stream and interacts in the main lobby.
-  - Coach (Pit Wall): Strategizes privately with the Player in a private channel.
-- Match length: 3 Games. Goal: accumulate the most Championship Points across the 3 Games.
+* 16 players randomized into 8 teams.
+* Each team consists of a Player (Driver) and a Coach.
 
 ### 2. Championship Point System
-
-Points are awarded at the end of each Game based on final in-game placement. Game 3 is double points.
-
-| Placement | Game 1 & 2 | Game 3 (×2) |
-|---:|:---:|:---:|
-| 1st | 12 | 24 |
-| 2nd | 10 | 20 |
-| 3rd | 8  | 16 |
-| 4th | 6  | 12 |
-| 5th | 4  | 8  |
-| 6th | 2  | 4  |
-| 7th | 1  | 2  |
-| 8th | 0  | 0  |
+Points are awarded at the end of each Game based on final in-game placement. Game 3 acts as a multiplier and is worth double points.
 
 ### 3. The "Three Strikes" Banned Word System
+If a Player includes a currently banned word in their answer, they receive a strike (tracked across all 3 Games):
+* 1st Strike: −2 Championship Points.
+* 2nd Strike: −6 Championship Points (cumulative).
+* 3rd Strike (DNF): 0 points for that Game, resulting in a Disqualified/Did Not Finish status.
 
-- At tournament start Race Control reveals a Master 16 Meta Words list.
-- Before each Game, the lobby bans 4 words for that Game.
-- If a Player includes a currently banned word in their answer, they receive a strike (tracked across all 3 Games):
-  - Strike 1 (Slip-Up): −2 Championship Points at the end of the Game.
-  - Strike 2 (Repeat Offender): −4 Championship Points at the end of the Game.
-  - Strike 3 (DNF): 0 points for that Game (team disqualified for that Game — they receive zero even if they placed 1st).
+### 4. Meta Word Pool & Ban Modes
+The admin panel allows you to toggle between two distinct ban systems:
+* Original System: Teams share a 16-word pool and ban up to 8 words per game. Words can be specifically assigned to teams as Meta Words.
+* New System: Teams ban up to 4 new words per game. These bans carry over and stack, resulting in 4 bans in Game 1, 8 in Game 2, and 12 in Game 3. Meta assignments are disabled in this mode.
 
-Strikes accumulate across Games.
+Successfully utilizing an active Meta Word grants +1 Bonus Point. However, under the Collision Rule, if two teams use the exact same Meta Word in a single game, neither receives the bonus.
 
-### 4. Meta Word Pool & "The Collision Rule"
-
-- The Meta Words remaining after bans form the Active (Free-for-All) Pool.
-- Teams may optionally include Active Meta Words in answers to earn bonus points; Teams are not restricted to using only the 16 Meta Words.
-- Bonus: Successfully using a unique Active Meta Word in a winning answer awards +1 Bonus Championship Point for that Game.
-- Collision Rule: If two or more teams use the exact same Active Meta Word in the same Game, the word is considered a collision — no bonus is awarded for that specific word.
-
-### 5. Official Gameplay Flow & Comms Rules
-
-Comms Rule: In the Main Lobby voice channel only Players may speak. Coaches must remain muted in public channels and may only speak privately with their Player in their Team Room.
-
-Gameplay steps per Game:
-1. Briefing (Main Lobby): Race Control displays Master 16 and current bans.
-2. Ban Vote (Main Lobby): Each team votes to ban 4 active Meta Words for the Game.
-3. Prompting Phase (Team Rooms): Players + Coaches go to private channels to brainstorm and submit answers.
-4. Presentation Phase (Main Lobby): Teams return, answers are shown on-stream, and votes are cast.
-5. Checkered Flag: Race Control tallies placements, applies strike penalties, and awards bonus Meta Word points.
-
-### 6. The Track (Game-by-Game Breakdown)
-
-- Game 1 (Open Straight): 0 initial bans. Teams vote to ban 4 words → 12 Active words remain.
-- Game 2 (Chicane): The 4 words banned in Game 1 remain banned. Teams ban 4 more → 8 Active words remain.
-- Game 3 (Hairpin — Double Points): The 8 previously banned remain banned. Teams ban 4 more → 4 Active words remain. Game 3 points are doubled.
-
-### 7. Tiebreakers
-
-If two teams are tied on Championship Points after Game 3, the tie is broken by the number of Meta Word Bonus Points scored across the tournament (team with more bonus points wins the tie).
-
-## App specifics & conventions
-
-- The app persists state to localStorage (key: `quiplash_v4`).
-- Game 3 multiplier and strike deductions follow the rulebook above and are implemented in the scoring helpers.
-- Public vs Admin: Admin controls phases, scoring, draft, and team management. Use the Admin button on the public page to log in.
-
-## Contributing
-
-Contributions, improvements, and issue reports are welcome. Please open an issue describing the change or fork and submit a pull request.
-
-## License
-
-This repo does not include a license by default. Add a `LICENSE` file (for example, `MIT`) if you want to make the code permissively reusable.
+### 5. Tiebreakers
+If teams tie in Championship Points after Game 3, the winner is determined by the highest number of Meta Word Bonus Points. In the Coach Championship, ties are broken by the team with the fewest penalty strikes.
 
 ---
 
-# Competitive Quiplash Scoring System
+## Storage & Sync (Supabase)
 
-A lightweight React + Vite scoring system web app template — the codebase for the "Scoring System" project. It includes a minimal React setup powered by Vite, ESLint, and a small app scaffold in `src/`.
+This app replaces the legacy GitHub Gist polling with instant WebSocket synchronization powered by Supabase Realtime. 
 
-## Key Features
+* Live Updates: The app utilizes a WebSocket endpoint to push state changes to all public screens the moment the admin clicks "Save". Zero polling is required.
+* Database Schema: The app relies on a `tournament_state` Postgres table.
+* Local Fallback: If Supabase environment variables are missing, the app seamlessly falls back to `localStorage`.
+* Cross-Tab Sync: A `BroadcastChannel` is implemented to ensure instant cross-tab synchronization within the same browser, supplementing the server setup.
 
-- Modern front-end stack: React + Vite for fast dev server and builds
-- ESLint configuration for consistent code style
-- Tiny, easy-to-extend starter structure for building scoring or dashboard apps
+### Supabase Setup
 
-## Prerequisites
+Run the following SQL in your Supabase SQL Editor to initialize the database:
 
-- Node.js 18+ and npm (or yarn)
-- Git (for cloning and version control)
+```sql
+CREATE TABLE tournament_state (
+  id TEXT PRIMARY KEY DEFAULT 'main',
+  state JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-## Quick Start
+-- Enable Realtime on the table
+ALTER TABLE tournament_state REPLICA IDENTITY FULL;
 
-1. Install dependencies
-
-```bash
-npm install
-```
-
-2. Run the development server (Hot Module Replacement enabled)
-
-```bash
-npm run dev
-```
-
-3. Build for production
-
-```bash
-npm run build
-```
-
-4. Preview the production build locally
-
-```bash
-npm run preview
-```
-
-## Available NPM Scripts
-
-- `dev` — start Vite dev server
-- `build` — build production assets
-- `preview` — preview the production build locally
-- (add `lint` or `test` if you add tooling later)
-
-## Project Structure (high level)
-
-- `index.html` — app entry HTML
-- `package.json` — scripts & dependencies
-- `vite.config.js` — Vite config
-- `src/` — React source files
-	- `src/main.jsx` — app bootstrap
-	- `src/App.jsx` — main app component
-	- `src/assets/` — images/icons
-
-## How to contribute
-
-1. Fork the repo and create a feature branch
-2. Make changes and run the dev server locally
-3. Open a pull request with a clear description of the change
-
-If you want help with CI, tests, or adding TypeScript, I can add them.
-
-## Troubleshooting
-
-- If you see authentication errors when pushing, configure `gh auth login`, use an SSH key, or create a GitHub Personal Access Token and configure your git credential manager.
-
-## License
-
-Specify your project license here (e.g., MIT) or contact the repo owner for details.
-
----
-
-## Gist storage & deployment (live state)
-
-This app can persist the tournament state to a GitHub Gist so the public view can poll for live updates.
-
-Quick summary:
-
-- Create a secret Gist named `quiplash_state.json` containing an empty object (`{}`).
-- Create a GitHub Personal Access Token with the `gist` scope.
-- Provide the following environment variables to the app:
-
-```env
-VITE_ADMIN_PASSWORD=your_admin_password_here
-VITE_GITHUB_TOKEN=ghp_your_token_here
-VITE_GIST_ID=your_gist_id_here
-```
-
-- When `VITE_GITHUB_TOKEN` and `VITE_GIST_ID` are present the app will:
-  - Load the JSON from the Gist on startup (merging with defaults).
-  - Poll the Gist every 3 seconds and update the UI when changes are detected (public viewers).
-  - Persist admin changes back to the Gist when the admin modifies state.
-
-- If the env vars are missing (local dev), the app falls back to `localStorage` and uses cross-tab events to sync.
-
-See the project `src/App.jsx` `useStore` implementation for details.
+-- Insert initial empty row
+INSERT INTO tournament_state (id, state) VALUES ('main', '{}');
 
