@@ -140,33 +140,125 @@ function rankTeams(teams) {
 
 function phaseOf(id) { return PHASES.find(p=>p.id===id)||PHASES[0]; }
 
-// ─── STORAGE + SYNC (GitHub Gist) ────────────────────────────────────────────
-// Requires env vars: VITE_GITHUB_TOKEN and VITE_GIST_ID
-// Falls back to localStorage if env vars are missing (dev mode)
-const GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN || "";
-const GIST_ID      = import.meta.env.VITE_GIST_ID || "";
-const GIST_FILE    = "quiplash_state.json";
-const USE_GIST     = !!(GITHUB_TOKEN && GIST_ID);
-const POLL_MS      = 3000; // public viewers poll every 3s
+// ─── STORAGE + SYNC (Supabase Realtime) ──────────────────────────────────────
+// Requires env vars: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+// Falls back to localStorage if env vars are missing (local dev)
+//
+// Supabase table setup (run once in SQL editor):
+//   CREATE TABLE tournament_state (
+//     id TEXT PRIMARY KEY DEFAULT 'main',
+//     state JSONB NOT NULL,
+//     updated_at TIMESTAMPTZ DEFAULT NOW()
+//   );
+//   ALTER TABLE tournament_state REPLICA IDENTITY FULL;
+//   INSERT INTO tournament_state (id, state) VALUES ('main', '{}');
 
-async function gistRead() {
-  const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-    headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: "application/vnd.github.v3+json" },
-    cache: "no-store",
-  });
-  if (!r.ok) throw new Error("Gist read failed");
-  const data = await r.json();
-  const raw = data.files?.[GIST_FILE]?.content;
-  if (!raw) throw new Error("File not found in gist");
-  return JSON.parse(raw);
+const SB_URL      = import.meta.env.VITE_SUPABASE_URL  || "";
+const SB_KEY      = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const USE_SUPABASE = !!(SB_URL && SB_KEY);
+
+// ─── Supabase REST helpers (no SDK needed, plain fetch) ───────────────────────
+function sbHeaders(extra={}) {
+  return {
+    "apikey": SB_KEY,
+    "Authorization": `Bearer ${SB_KEY}`,
+    "Content-Type": "application/json",
+    ...extra,
+  };
 }
 
-async function gistWrite(state) {
-  await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+async function sbRead() {
+  const r = await fetch(
+    `${SB_URL}/rest/v1/tournament_state?id=eq.main&select=state`,
+    { headers: sbHeaders({ "Accept": "application/json" }), cache: "no-store" }
+  );
+  if (!r.ok) throw new Error("Supabase read failed");
+  const rows = await r.json();
+  if (!rows.length) throw new Error("No state row found");
+  return rows[0].state;
+}
+
+async function sbWrite(state) {
+  await fetch(`${SB_URL}/rest/v1/tournament_state?id=eq.main`, {
     method: "PATCH",
-    headers: { Authorization: `token ${GITHUB_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(state) } } }),
+    headers: sbHeaders({ "Prefer": "return=minimal" }),
+    body: JSON.stringify({ state, updated_at: new Date().toISOString() }),
   });
+}
+
+// ─── Supabase Realtime subscription (WebSocket) ───────────────────────────────
+// Returns an unsubscribe function.
+function sbSubscribe(onUpdate) {
+  if (!USE_SUPABASE) return ()=>{};
+
+  // Supabase Realtime uses a WebSocket endpoint
+  const wsUrl = SB_URL.replace("https://", "wss://").replace("http://", "ws://");
+  const url   = `${wsUrl}/realtime/v1/websocket?apikey=${SB_KEY}&vsn=1.0.0`;
+
+  let ws;
+  let dead = false;
+  let heartbeat;
+
+  function connect() {
+    if (dead) return;
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      // Join the realtime channel for our table
+      ws.send(JSON.stringify({
+        topic: "realtime:public:tournament_state",
+        event: "phx_join",
+        payload: {
+          config: {
+            broadcast: { self: false },
+            presence:  { key: "" },
+            postgres_changes: [{
+              event:  "*",
+              schema: "public",
+              table:  "tournament_state",
+              filter: "id=eq.main",
+            }],
+          },
+        },
+        ref: "1",
+      }));
+
+      // Heartbeat every 30s to keep connection alive
+      heartbeat = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" }));
+      }, 30000);
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        // Postgres change event carries the new row in payload.data.record
+        if (
+          msg.event === "postgres_changes" &&
+          msg.payload?.data?.record?.state
+        ) {
+          onUpdate(msg.payload.data.record.state);
+        }
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      clearInterval(heartbeat);
+      // Auto-reconnect after 2s if not intentionally closed
+      if (!dead) setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }
+
+  connect();
+
+  return () => {
+    dead = true;
+    clearInterval(heartbeat);
+    try { ws?.close(); } catch {}
+  };
 }
 
 function merge(base,over) {
@@ -179,7 +271,10 @@ function merge(base,over) {
   return r;
 }
 
-function useStore() {
+// ─── ADMIN STORE ──────────────────────────────────────────────────────────────
+// Loads latest state on mount, writes to Supabase on every change.
+// Never listens for realtime updates (admin is the source of truth).
+function useAdminStore() {
   const [state,setRaw]=useState(()=>{
     try {
       const raw=localStorage.getItem(STORAGE_KEY);
@@ -187,54 +282,72 @@ function useStore() {
     } catch{}
     return mkDefault();
   });
-  const [gistLoaded,setGistLoaded]=useState(false);
 
-  // Initial load from Gist
+  // Load latest from Supabase on mount
   useEffect(()=>{
-    if(!USE_GIST){setGistLoaded(true);return;}
-    gistRead().then(remote=>{
+    if(!USE_SUPABASE) return;
+    sbRead().then(remote=>{
       const merged=merge(mkDefault(),remote);
       setRaw(merged);
       try{localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));}catch{}
-      setGistLoaded(true);
-    }).catch(()=>setGistLoaded(true));
+    }).catch(()=>{});
   },[]);
-
-  // Poll for remote changes (public viewers stay in sync)
-  useEffect(()=>{
-    if(!USE_GIST||!gistLoaded) return;
-    const id=setInterval(()=>{
-      gistRead().then(remote=>{
-        const merged=merge(mkDefault(),remote);
-        setRaw(prev=>{
-          // Only update if something changed (avoid needless re-renders)
-          if(JSON.stringify(prev)===JSON.stringify(merged)) return prev;
-          try{localStorage.setItem(STORAGE_KEY,JSON.stringify(merged));}catch{}
-          return merged;
-        });
-      }).catch(()=>{});
-    },POLL_MS);
-    return ()=>clearInterval(id);
-  },[gistLoaded]);
 
   const setState=useCallback((fn)=>{
     setRaw(prev=>{
       const next=typeof fn==="function"?fn(prev):fn;
+      // 1. Update localStorage immediately (instant local feedback)
       try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch{}
-      if(USE_GIST) gistWrite(next).catch(()=>{});
+      // 2. Write to Supabase — triggers Realtime event on all public screens
+      if(USE_SUPABASE) sbWrite(next).catch(()=>{});
       return next;
     });
   },[]);
 
-  // localStorage cross-tab sync (fallback / local dev)
+  return [state,setState];
+}
+
+// ─── PUBLIC STORE ─────────────────────────────────────────────────────────────
+// Loads latest state on mount, then receives instant Realtime pushes from Supabase.
+// Zero polling — WebSocket delivers changes the moment admin writes.
+function usePublicStore() {
+  const [state,setRaw]=useState(()=>{
+    try {
+      const raw=localStorage.getItem(STORAGE_KEY);
+      if(raw) return merge(mkDefault(),JSON.parse(raw));
+    } catch{}
+    return mkDefault();
+  });
+
+  // Load latest from Supabase on mount
   useEffect(()=>{
-    if(USE_GIST) return;
-    const h=(e)=>{ if(e.key===STORAGE_KEY&&e.newValue){try{setRaw(JSON.parse(e.newValue));}catch{}} };
+    if(!USE_SUPABASE) return;
+    sbRead().then(remote=>{
+      setRaw(merge(mkDefault(),remote));
+    }).catch(()=>{});
+  },[]);
+
+  // Subscribe to Realtime — instant updates whenever admin writes
+  useEffect(()=>{
+    const unsub = sbSubscribe((record)=>{
+      setRaw(merge(mkDefault(),record));
+    });
+    return unsub;
+  },[]);
+
+  // localStorage fallback for local dev (no Supabase)
+  useEffect(()=>{
+    if(USE_SUPABASE) return;
+    const h=(e)=>{
+      if(e.key===STORAGE_KEY&&e.newValue){
+        try{setRaw(merge(mkDefault(),JSON.parse(e.newValue)));}catch{}
+      }
+    };
     window.addEventListener("storage",h);
     return ()=>window.removeEventListener("storage",h);
   },[]);
 
-  return [state,setState];
+  return state;
 }
 
 async function toDataURL(file) {
@@ -317,7 +430,7 @@ function PreGamePublic({state,t}) {
     <div style={{minHeight:"100vh",background:t.bg,display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 24px"}}>
       {state.tournamentLogo&&<img src={state.tournamentLogo} alt="" style={{height:64,objectFit:"contain",marginBottom:16}} />}
       <h1 style={{margin:"0 0 6px",fontSize:"clamp(22px,5vw,52px)",fontWeight:800,color:t.text,textAlign:"center",letterSpacing:-1}}>{state.tournamentName}</h1>
-      <p style={{margin:"0 0 40px",fontSize:15,color:t.sub,fontWeight:500}}>Participating Teams</p>
+      <p style={{margin:"0 0 40px",fontSize:15,color:t.sub,fontWeight:500,textAlign:"center",letterSpacing:2,textTransform:"uppercase"}}>Participating Teams</p>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:14,width:"100%",maxWidth:900}}>
         {state.teams.map(tm=>(
           <div key={tm.id} onClick={()=>setSelectedTeam(tm)}
@@ -1409,13 +1522,45 @@ function DraftTab({state,setState,t}) {
 
 // ─── TEAMS TAB ────────────────────────────────────────────────────────────────
 function TeamsTab({state,setState,t}) {
-  const upd=(id,f,v)=>setState(s=>({...s,teams:s.teams.map(tm=>tm.id===id?{...tm,[f]:v}:tm)}));
+  // Local draft of teams so typing isn't interrupted by any background syncs
+  const [localTeams,setLocalTeams]=useState(()=>state.teams.map(tm=>({...tm})));
+  const [saved,setSaved]=useState(false);
+  const [dirty,setDirty]=useState(false);
+
+  // Sync from parent only when not dirty (user hasn't started editing)
+  useEffect(()=>{
+    if(!dirty){
+      setLocalTeams(state.teams.map(tm=>({...tm})));
+    }
+  },[state.teams,dirty]);
+
+  const upd=(id,f,v)=>{
+    setDirty(true);
+    setSaved(false);
+    setLocalTeams(prev=>prev.map(tm=>tm.id===id?{...tm,[f]:v}:tm));
+  };
+
+  const saveAll=()=>{
+    setState(s=>({...s,teams:localTeams}));
+    setDirty(false);
+    setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+  };
+
   return (
     <div>
-      <h2 style={{margin:"0 0 4px",fontWeight:800,fontSize:20,color:t.text}}>Team Roster</h2>
-      <p style={{margin:"0 0 16px",color:t.sub,fontSize:13}}>Click avatar icons to upload photos.</p>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,gap:12,flexWrap:"wrap"}}>
+        <div>
+          <h2 style={{margin:"0 0 4px",fontWeight:800,fontSize:20,color:t.text}}>Team Roster</h2>
+          <p style={{margin:0,color:t.sub,fontSize:13}}>Click avatar icons to upload photos. Press <strong>Save & Publish</strong> when done.</p>
+        </div>
+        <button onClick={saveAll} style={bSt(saved?"#22c55e":t.accent,t.isDark?"#111":"#fff",{padding:"9px 20px",fontSize:14})}>
+          <Ico name={saved?"check":"save"} size={15} /> {saved?"Saved!":"Save & Publish"}
+        </button>
+      </div>
+      {dirty&&<div style={{marginBottom:12,padding:"8px 14px",borderRadius:8,background:"rgba(247,201,72,.1)",border:"1px solid rgba(247,201,72,.3)",fontSize:12,color:t.accent,fontWeight:600}}>⚠ Unsaved changes — click Save &amp; Publish to push to the public view.</div>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:12}}>
-        {state.teams.map(tm=>(
+        {localTeams.map(tm=>(
           <div key={tm.id} style={cSt(t,{padding:18})}>
             <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:12,alignItems:"start"}}>
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -1447,6 +1592,11 @@ function TeamsTab({state,setState,t}) {
             </div>
           </div>
         ))}
+      </div>
+      <div style={{marginTop:16,display:"flex",justifyContent:"flex-end"}}>
+        <button onClick={saveAll} style={bSt(saved?"#22c55e":t.accent,t.isDark?"#111":"#fff",{padding:"10px 24px",fontSize:14})}>
+          <Ico name={saved?"check":"save"} size={15} /> {saved?"Saved!":"Save & Publish"}
+        </button>
       </div>
     </div>
   );
@@ -1553,18 +1703,10 @@ function SettingsTab({state,setState,t}) {
   );
 }
 
-// ─── ROOT ─────────────────────────────────────────────────────────────────────
-export default function App() {
-  const [state,setState]=useStore();
-  const [auth,setAuth]=useState(false);
-  const [view,setView]=useState("public");
+// ─── ADMIN APP: own store, never polls Gist ──────────────────────────────────
+function AdminApp({onLogout,onPublic}) {
+  const [state,setState]=useAdminStore();
   const t=getTheme(state);
-
-  const handleAdminClick=()=>{
-    if(auth) setView("admin");
-    else setView("login");
-  };
-
   const css=`
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     *,*::before,*::after{box-sizing:border-box;}
@@ -1579,21 +1721,72 @@ export default function App() {
     @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   `;
-
   return (
     <>
       <style>{css}</style>
-      {/* Admin/login nav pill — only visible when in admin/login view */}
-      {view!=="public"&&(
-        <div style={{position:"fixed",top:10,left:"50%",transform:"translateX(-50%)",zIndex:9999,display:"flex",gap:3,background:t.isDark?"rgba(0,0,0,.88)":"rgba(255,255,255,.94)",padding:"4px 5px",borderRadius:24,backdropFilter:"blur(12px)",border:`1px solid ${t.border}`}}>
-          <button onClick={()=>setView("public")} style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:view==="public"?t.accent:"transparent",color:view==="public"?(t.isDark?"#111":"#fff"):t.sub}}>Public</button>
-          {auth&&<button onClick={()=>setView("admin")} style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:view==="admin"?t.accent:"transparent",color:view==="admin"?(t.isDark?"#111":"#fff"):t.sub}}>Admin</button>}
-          {!auth&&<button onClick={()=>setView("login")} style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,color:t.sub}}>Login</button>}
-        </div>
-      )}
-      {view==="public"&&<PublicView state={state} onAdminClick={handleAdminClick} />}
-      {view==="login"&&!auth&&<Login t={t} onLogin={()=>{setAuth(true);setView("admin");}} />}
-      {view==="admin"&&auth&&<Admin state={state} setState={setState} t={t} onLogout={()=>{setAuth(false);setView("public");}} />}
+      <div style={{position:"fixed",top:10,left:"50%",transform:"translateX(-50%)",zIndex:9999,display:"flex",gap:3,background:t.isDark?"rgba(0,0,0,.88)":"rgba(255,255,255,.94)",padding:"4px 5px",borderRadius:24,backdropFilter:"blur(12px)",border:`1px solid ${t.border}`}}>
+        <button onClick={onPublic} style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:"transparent",color:t.sub}}>Public</button>
+        <button style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:t.accent,color:t.isDark?"#111":"#fff"}}>Admin</button>
+      </div>
+      <Admin state={state} setState={setState} t={t} onLogout={onLogout} />
     </>
   );
+}
+
+// ─── PUBLIC APP: own store, polls Gist, never writes ─────────────────────────
+function PublicApp({onAdminClick}) {
+  const state=usePublicStore();
+  const t=getTheme(state);
+  const css=`
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    *,*::before,*::after{box-sizing:border-box;}
+    html,body{margin:0;padding:0;}
+    body{background:${t.bg};color:${t.text};font-family:'Inter',system-ui,sans-serif;}
+    input,select,button,textarea{font-family:inherit;}
+    option{background:${t.surface};color:${t.text};}
+    details summary{list-style:none;}
+    details summary::-webkit-details-marker{display:none;}
+    ::-webkit-scrollbar{width:5px;height:5px;}
+    ::-webkit-scrollbar-thumb{background:${t.border};border-radius:4px;}
+    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  `;
+  return (
+    <>
+      <style>{css}</style>
+      <PublicView state={state} onAdminClick={onAdminClick} />
+    </>
+  );
+}
+
+// ─── ROOT ─────────────────────────────────────────────────────────────────────
+export default function App() {
+  const [auth,setAuth]=useState(false);
+  const [view,setView]=useState("public"); // "public" | "login" | "admin"
+
+  if(view==="admin"&&auth)
+    return <AdminApp onLogout={()=>{setAuth(false);setView("public");}} onPublic={()=>setView("public")} />;
+
+  if(view==="login"&&!auth) {
+    // Need theme for login screen — use a minimal local state
+    const t=DARK; // default dark for login
+    return (
+      <>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+          *,*::before,*::after{box-sizing:border-box;}
+          html,body{margin:0;padding:0;background:${t.bg};color:${t.text};font-family:'Inter',system-ui,sans-serif;}
+          @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+        `}</style>
+        <div style={{position:"fixed",top:10,left:"50%",transform:"translateX(-50%)",zIndex:9999,display:"flex",gap:3,background:"rgba(0,0,0,.88)",padding:"4px 5px",borderRadius:24,backdropFilter:"blur(12px)",border:`1px solid ${t.border}`}}>
+          <button onClick={()=>setView("public")} style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:"transparent",color:t.sub}}>Public</button>
+          <button style={{padding:"5px 13px",borderRadius:18,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,color:t.sub}}>Login</button>
+        </div>
+        <Login t={t} onLogin={()=>{setAuth(true);setView("admin");}} />
+      </>
+    );
+  }
+
+  // Default: public view
+  return <PublicApp onAdminClick={()=>{ if(auth) setView("admin"); else setView("login"); }} />;
 }
