@@ -62,6 +62,10 @@ function mkTeam(id) {
   return {
     id, name:`Team ${id}`, playerName:"", coachName:"",
     teamLogo:null, playerAvatar:null, coachAvatar:null,
+    quote:"",           // team motto/quote
+    playerQuote:"",     // driver personal quote
+    coachQuote:"",      // coach personal quote
+    description:"",     // team description/bio
     strikes:[0,0,0],       // per-game, reset each game
     bonusPoints:[0,0,0],   // meta wins per game
     placements:[null,null,null],
@@ -85,6 +89,7 @@ function mkDefault() {
       3:{pool:[],banned:[],assignments:{}},
     },
     completedGames:[],
+    banSystem:"original", // "original" | "new"
   };
 }
 
@@ -242,6 +247,7 @@ function Login({t,onLogin}) {
 
 // ─── PRE-GAME PUBLIC ─────────────────────────────────────────────────────────
 function PreGamePublic({state,t}) {
+  const [selectedTeam,setSelectedTeam]=useState(null);
   return (
     <div style={{minHeight:"100vh",background:t.bg,display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 24px"}}>
       {state.tournamentLogo&&<img src={state.tournamentLogo} alt="" style={{height:64,objectFit:"contain",marginBottom:16}} />}
@@ -249,7 +255,11 @@ function PreGamePublic({state,t}) {
       <p style={{margin:"0 0 40px",fontSize:15,color:t.sub,fontWeight:500}}>Participating Teams</p>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:14,width:"100%",maxWidth:900}}>
         {state.teams.map(tm=>(
-          <div key={tm.id} style={{...cSt(t,{padding:22,textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:10})}}>
+          <div key={tm.id} onClick={()=>setSelectedTeam(tm)}
+            style={{...cSt(t,{padding:22,textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:10,cursor:"pointer"})}}
+            onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 8px 24px ${t.isDark?"rgba(0,0,0,.5)":"rgba(0,0,0,.12)"}`}}
+            onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=""}}
+          >
             <Av src={tm.teamLogo} name={tm.name} size={70} />
             <div>
               <div style={{fontWeight:800,fontSize:15,color:t.text}}>{tm.name}</div>
@@ -265,6 +275,55 @@ function PreGamePublic({state,t}) {
           </div>
         ))}
       </div>
+      {selectedTeam&&(
+        <div onClick={()=>setSelectedTeam(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{...cSt(t,{maxWidth:580,width:"100%",overflow:"hidden",position:"relative"})}}>
+            {/* Header band */}
+            <div style={{padding:"24px 24px 20px",borderBottom:`1px solid ${t.border}`,display:"flex",gap:16,alignItems:"center"}}>
+              <Av src={selectedTeam.teamLogo} name={selectedTeam.name} size={72} />
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:900,fontSize:22,color:t.text,lineHeight:1.1}}>{selectedTeam.name}</div>
+                {selectedTeam.description&&<div style={{fontSize:13,color:t.sub,marginTop:5,lineHeight:1.5}}>{selectedTeam.description}</div>}
+                {selectedTeam.quote&&(
+                  <div style={{marginTop:8,fontSize:12,fontStyle:"italic",color:t.accent,borderLeft:`2px solid ${t.accent}`,paddingLeft:8}}>
+                    "{selectedTeam.quote}"
+                  </div>
+                )}
+              </div>
+              <button onClick={()=>setSelectedTeam(null)} style={{position:"absolute",top:12,right:12,background:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",border:"none",cursor:"pointer",color:t.sub,padding:6,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <Ico name="x" size={16} />
+              </button>
+            </div>
+            {/* Driver + Coach landscape cards */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:0}}>
+              <div style={{padding:"18px 20px",borderRight:`1px solid ${t.border}`}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:t.sub,textTransform:"uppercase",marginBottom:10}}>Driver</div>
+                <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:10}}>
+                  <Av src={selectedTeam.playerAvatar} name={selectedTeam.playerName||"Driver"} size={48} round />
+                  <div style={{fontWeight:800,fontSize:16,color:t.text}}>{selectedTeam.playerName||"—"}</div>
+                </div>
+                {selectedTeam.playerQuote&&(
+                  <div style={{fontSize:12,fontStyle:"italic",color:t.sub,lineHeight:1.5,padding:"8px 10px",borderRadius:8,background:t.isDark?"rgba(255,255,255,.04)":"rgba(0,0,0,.04)",border:`1px solid ${t.border}`}}>
+                    "{selectedTeam.playerQuote}"
+                  </div>
+                )}
+              </div>
+              <div style={{padding:"18px 20px"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:t.sub,textTransform:"uppercase",marginBottom:10}}>Coach</div>
+                <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:10}}>
+                  <Av src={selectedTeam.coachAvatar} name={selectedTeam.coachName||"Coach"} size={48} round />
+                  <div style={{fontWeight:800,fontSize:16,color:t.text}}>{selectedTeam.coachName||"—"}</div>
+                </div>
+                {selectedTeam.coachQuote&&(
+                  <div style={{fontSize:12,fontStyle:"italic",color:t.sub,lineHeight:1.5,padding:"8px 10px",borderRadius:8,background:t.isDark?"rgba(255,255,255,.04)":"rgba(0,0,0,.04)",border:`1px solid ${t.border}`}}>
+                    "{selectedTeam.coachQuote}"
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -272,98 +331,301 @@ function PreGamePublic({state,t}) {
 // ─── DRAFT PUBLIC ─────────────────────────────────────────────────────────────
 function DraftPublic({state,t,phase}) {
   const gn=phase.game;
-  const effGn = (gn===2||gn===3)?1:gn;
-  const pool = state.words?.[effGn]?.pool||[]; // shared pool (game 1 for games 2/3)
-  const banned = state.words?.[gn]?.banned||[]; // banned is per-game
-  const asgn = state.words?.[gn]?.assignments||{}; // assignments per-game
+  const banSystem=state.banSystem||"original";
+  const pool = state.words?.[1]?.pool||[]; // always game 1 pool (shared)
+  const banned = state.words?.[gn]?.banned||[];
+  const asgn = state.words?.[gn]?.assignments||{};
   const available=pool.filter(w=>!banned.includes(w));
   const ranked=gn===1?state.teams:rankTeams(state.teams);
+  const isNew=banSystem==="new";
+
+  const [showPoolModal,setShowPoolModal]=useState(false);
+  const [showBanModal,setShowBanModal]=useState(false);
+
+  // For New System: show inherited bans from prior games
+  const inheritedBanned=isNew&&gn>1
+    ? [...new Set([...(state.words?.[1]?.banned||[]),...(gn>2?(state.words?.[2]?.banned||[]):[])].filter(w=>!banned.includes(w)))]
+    : [];
+  const allBanned=[...banned,...inheritedBanned];
+
+  const banLimit=isNew?4:8;
+  const maxBanned=isNew?"4 new bans this game":"8 max";
+
   return (
-    <div style={{maxWidth:860,margin:"0 auto 24px",padding:"0 16px"}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+    <div style={{maxWidth:960,margin:"0 auto 24px",padding:"0 16px"}}>
+      <div style={{display:"grid",gridTemplateColumns:isNew?"1fr 1fr":"1fr 1fr 1fr",gap:12}}>
+
+        {/* Word Pool */}
         <div style={cSt(t,{padding:16})}>
-          <div style={{fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",marginBottom:10}}>Word Pool</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase"}}>Word Pool ({pool.length})</div>
+            <button onClick={()=>setShowPoolModal(true)} style={bSt(t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",t.sub,{padding:"2px 8px",fontSize:10,borderRadius:6})}>
+              <Ico name="plus" size={11} /> Expand
+            </button>
+          </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
             {pool.length===0&&<span style={{color:t.sub,fontSize:13}}>No words yet</span>}
             {pool.map(w=>{
-              const ib=banned.includes(w);
+              const ib=allBanned.includes(w);
+              const isInherited=inheritedBanned.includes(w);
               const ia=!ib&&Object.values(asgn).includes(w);
-              return <span key={w} style={{padding:"3px 9px",borderRadius:16,fontSize:12,fontWeight:600,background:ib?"rgba(239,68,68,.1)":ia?"rgba(34,197,94,.1)":t.isDark?"rgba(255,255,255,.06)":"rgba(0,0,0,.05)",color:ib?"#ef4444":ia?"#22c55e":t.text,textDecoration:ib?"line-through":"none",border:`1px solid ${ib?"rgba(239,68,68,.25)":ia?"rgba(34,197,94,.25)":t.border}`}}>{w}</span>;
+              return <span key={w} style={{padding:"3px 9px",borderRadius:16,fontSize:12,fontWeight:600,
+                background:ib?"rgba(239,68,68,.1)":ia?"rgba(34,197,94,.1)":t.isDark?"rgba(255,255,255,.06)":"rgba(0,0,0,.05)",
+                color:ib?"#ef4444":ia?"#22c55e":t.text,
+                textDecoration:ib?"line-through":"none",
+                border:`1px solid ${ib?"rgba(239,68,68,.25)":ia?"rgba(34,197,94,.25)":t.border}`,
+                opacity:isInherited?.7:1
+              }}>{w}</span>;
             })}
           </div>
         </div>
+
+        {/* Banned Words */}
         <div style={cSt(t,{padding:16,borderColor:"rgba(239,68,68,.3)"})}>
-          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:700,letterSpacing:.5,color:"#ef4444",textTransform:"uppercase",marginBottom:10}}>
-            <Ico name="ban" size={12} color="#ef4444" /> Banned Words
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:700,letterSpacing:.5,color:"#ef4444",textTransform:"uppercase"}}>
+              <Ico name="ban" size={12} color="#ef4444" /> Banned ({allBanned.length})
+            </div>
+            <button onClick={()=>setShowBanModal(true)} style={bSt("rgba(239,68,68,.1)","#ef4444",{padding:"2px 8px",fontSize:10,borderRadius:6})}>
+              <Ico name="plus" size={11} /> Expand
+            </button>
           </div>
+          {isNew&&inheritedBanned.length>0&&(
+            <div style={{marginBottom:8}}>
+              <div style={{fontSize:10,fontWeight:700,color:t.sub,letterSpacing:.5,textTransform:"uppercase",marginBottom:4}}>Carried Over</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                {inheritedBanned.map(w=><span key={w} style={{padding:"2px 8px",borderRadius:12,fontSize:11,fontWeight:600,background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.6)",border:"1px solid rgba(239,68,68,.15)",textDecoration:"line-through"}}>{w}</span>)}
+              </div>
+            </div>
+          )}
+          {isNew&&banned.length>0&&<div style={{fontSize:10,fontWeight:700,color:t.sub,letterSpacing:.5,textTransform:"uppercase",marginBottom:4}}>New This Game</div>}
           <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-            {banned.length===0&&<span style={{color:t.sub,fontSize:13}}>None banned</span>}
+            {banned.length===0&&inheritedBanned.length===0&&<span style={{color:t.sub,fontSize:13}}>None banned</span>}
             {banned.map(w=><span key={w} style={{padding:"3px 9px",borderRadius:16,fontSize:12,fontWeight:600,background:"rgba(239,68,68,.1)",color:"#ef4444",border:"1px solid rgba(239,68,68,.25)"}}>{w}</span>)}
           </div>
         </div>
-        <div style={cSt(t,{padding:16})}>
-          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",marginBottom:10}}>
-            <Ico name="star" size={12} color="#f59e0b" /> Meta Draft
+
+        {/* Meta Draft — Original system only */}
+        {!isNew&&(
+          <div style={cSt(t,{padding:16})}>
+            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",marginBottom:10}}>
+              <Ico name="star" size={12} color="#f59e0b" /> Meta Draft
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {ranked.map((tm,i)=>{
+                const word=Object.entries(asgn).find(([id])=>Number(id)===tm.id)?.[1];
+                return (
+                  <div key={tm.id} style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:10,color:t.sub,width:14}}>{i+1}</span>
+                    <Av src={tm.teamLogo} name={tm.name} size={18} />
+                    <span style={{fontSize:12,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:t.text}}>{tm.name}</span>
+                    {word?<span style={{fontSize:11,fontWeight:700,color:"#22c55e",background:"rgba(34,197,94,.1)",padding:"2px 7px",borderRadius:10}}>{word}</span>:<span style={{fontSize:11,color:t.sub}}>—</span>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:5}}>
-            {ranked.map((tm,i)=>{
-              const word=Object.entries(asgn).find(([id])=>Number(id)===tm.id)?.[1];
-              return (
-                <div key={tm.id} style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:10,color:t.sub,width:14}}>{i+1}</span>
-                  <Av src={tm.teamLogo} name={tm.name} size={18} />
-                  <span style={{fontSize:12,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:t.text}}>{tm.name}</span>
-                  {word?<span style={{fontSize:11,fontWeight:700,color:"#22c55e",background:"rgba(34,197,94,.1)",padding:"2px 7px",borderRadius:10}}>{word}</span>:<span style={{fontSize:11,color:t.sub}}>—</span>}
-                </div>
-              );
-            })}
+        )}
+      </div>
+
+      {/* Pool Expand Modal */}
+      {showPoolModal&&(
+        <div onClick={()=>setShowPoolModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{...cSt(t,{padding:28,maxWidth:680,width:"100%",maxHeight:"82vh",overflow:"hidden",display:"flex",flexDirection:"column"})}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:18,color:t.text}}>Full Word Pool — Game {gn}</div>
+                <div style={{fontSize:12,color:t.sub,marginTop:2}}>{pool.length} words · {allBanned.length} banned</div>
+              </div>
+              <button onClick={()=>setShowPoolModal(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:t.sub}}><Ico name="x" size={20} /></button>
+            </div>
+            <div style={{overflowY:"auto",flex:1}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8}}>
+                {pool.map(w=>{
+                  const ib=allBanned.includes(w);
+                  const isInherited=inheritedBanned.includes(w);
+                  const ia=!ib&&Object.values(asgn).includes(w);
+                  return (
+                    <div key={w} style={{padding:"10px 14px",borderRadius:10,
+                      background:ib?"rgba(239,68,68,.1)":ia?"rgba(34,197,94,.1)":t.isDark?"rgba(255,255,255,.05)":"rgba(0,0,0,.04)",
+                      border:`1.5px solid ${ib?"rgba(239,68,68,.35)":ia?"rgba(34,197,94,.3)":t.border}`}}>
+                      <div style={{fontWeight:700,fontSize:15,color:ib?"#ef4444":ia?"#22c55e":t.text,textDecoration:ib?"line-through":"none"}}>{w}</div>
+                      <div style={{fontSize:10,color:t.sub,marginTop:3}}>
+                        {ib?(isInherited?"Carried over":"Banned this game"):ia?"Assigned":"Available"}
+                      </div>
+                    </div>
+                  );
+                })}
+                {pool.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",color:t.sub,padding:"40px 0"}}>No words in pool yet</div>}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Ban Expand Modal */}
+      {showBanModal&&(
+        <div onClick={()=>setShowBanModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{...cSt(t,{padding:28,maxWidth:560,width:"100%",maxHeight:"82vh",overflow:"hidden",display:"flex",flexDirection:"column",borderColor:"rgba(239,68,68,.3)"})}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:18,color:t.text}}>Banned Words — Game {gn}</div>
+                <div style={{fontSize:12,color:t.sub,marginTop:2}}>{isNew?"New System: +4 per game, stacks across games":"Original: up to 8 banned per game"}</div>
+              </div>
+              <button onClick={()=>setShowBanModal(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:t.sub}}><Ico name="x" size={20} /></button>
+            </div>
+            <div style={{overflowY:"auto",flex:1}}>
+              {isNew&&inheritedBanned.length>0&&(
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",marginBottom:8}}>Carried Over From Previous Games ({inheritedBanned.length})</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {inheritedBanned.map(w=>(
+                      <div key={w} style={{padding:"7px 13px",borderRadius:10,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)",textDecoration:"line-through",color:"rgba(239,68,68,.6)",fontWeight:700,fontSize:13}}>{w}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                <div style={{fontSize:11,fontWeight:700,letterSpacing:.5,color:"#ef4444",textTransform:"uppercase",marginBottom:8}}>
+                  {isNew?`Banned This Game (${banned.length}/4)`:`All Banned (${banned.length}/${banLimit})`}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {banned.map(w=>(
+                    <div key={w} style={{padding:"7px 13px",borderRadius:10,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.3)",color:"#ef4444",fontWeight:700,fontSize:13,display:"flex",alignItems:"center",gap:6}}>
+                      <Ico name="ban" size={13} color="#ef4444" />{w}
+                    </div>
+                  ))}
+                  {banned.length===0&&<span style={{color:t.sub,fontSize:13}}>None banned yet this game</span>}
+                </div>
+              </div>
+              {allBanned.length>0&&(
+                <div style={{marginTop:16,padding:"10px 12px",borderRadius:8,background:t.isDark?"rgba(239,68,68,.05)":"rgba(239,68,68,.03)",border:"1px solid rgba(239,68,68,.1)"}}>
+                  <span style={{fontSize:11,color:t.sub}}>Total banned words in effect: </span>
+                  <span style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>{allBanned.length}</span>
+                  <span style={{fontSize:11,color:t.sub}}> · Available: </span>
+                  <span style={{fontSize:11,fontWeight:700,color:"#22c55e"}}>{pool.length-allBanned.length}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── PODIUM ───────────────────────────────────────────────────────────────────
+function CoachChampionshipBoard({state,t,vis}) {
+  const sorted=[...state.teams].sort((a,b)=>{
+    const ba=teamBonus(a),bb=teamBonus(b);
+    if(bb!==ba) return bb-ba;
+    const sa=(a.strikes||[0,0,0]).reduce((x,y)=>x+y,0);
+    const sb=(b.strikes||[0,0,0]).reduce((x,y)=>x+y,0);
+    return sa-sb;
+  });
+  const rankColors=["#f7c948","#b0b0b0","#cd7f32"];
+  return (
+    <div style={{width:"100%",maxWidth:560,margin:"0 auto"}}>
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",color:t.accent,marginBottom:4}}>
+          <Ico name="trophy" size={14} color={t.accent} /> Coach Championship Cup
+        </div>
+        <div style={{fontSize:12,color:t.sub}}>Ranked by Meta Bonus Points · Ties broken by fewest strikes</div>
+      </div>
+      {sorted.map((tm,i)=>{
+        const bon=teamBonus(tm);
+        const totalStrikes=(tm.strikes||[0,0,0]).reduce((a,b)=>a+b,0);
+        const isFirst=i===0;
+        return (
+          <div key={tm.id} style={{display:"grid",gridTemplateColumns:"36px 44px 1fr 80px 72px",alignItems:"center",gap:10,padding:"12px 16px",borderRadius:12,background:isFirst?t.accent+"15":t.surface,border:`1px solid ${isFirst?t.accent+"44":t.border}`,marginBottom:6,opacity:vis?1:0,transform:vis?"translateX(0)":"translateX(-20px)",transition:`all .5s ease ${.1+i*.06}s`}}>
+            {/* Rank */}
+            <div style={{display:"flex",justifyContent:"center"}}>
+              {i<3
+                ? <Ico name="medal" size={22} color={rankColors[i]} />
+                : <span style={{fontWeight:800,fontSize:14,color:t.sub,textAlign:"center"}}>{i+1}</span>
+              }
+            </div>
+            {/* Avatar */}
+            <Av src={tm.coachAvatar||tm.teamLogo} name={tm.coachName||tm.name} size={40} round />
+            {/* Name + Team */}
+            <div style={{minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.coachName||"(No Coach)"}</div>
+              <div style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{tm.name}</div>
+            </div>
+            {/* Bonus Points */}
+            <div style={{textAlign:"center"}}>
+              <div style={{fontWeight:900,fontSize:22,color:bon>0?"#22c55e":t.sub,lineHeight:1}}>{bon}</div>
+              <div style={{fontSize:10,color:t.sub,marginTop:2,fontWeight:600,letterSpacing:.3}}>BONUS</div>
+            </div>
+            {/* Strikes */}
+            <div style={{textAlign:"center"}}>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:3}}><StrikePips count={totalStrikes} size={8} /></div>
+              <div style={{fontWeight:700,fontSize:12,color:totalStrikes>0?"#ef4444":t.sub,lineHeight:1}}>{totalStrikes}</div>
+              <div style={{fontSize:10,color:t.sub,marginTop:1,fontWeight:600,letterSpacing:.3}}>STRIKES</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Podium({state,t}) {
   const ranked=rankTeams(state.teams);
   const [vis,setVis]=useState(false);
+  const [showCoach,setShowCoach]=useState(false);
   useEffect(()=>{const tm=setTimeout(()=>setVis(true),200);return()=>clearTimeout(tm);},[]);
   const trio=[{tm:ranked[1],rank:2,h:200},{tm:ranked[0],rank:1,h:280},{tm:ranked[2],rank:3,h:160}].filter(d=>d.tm);
   const medalColor=["","#f7c948","#b0b0b0","#cd7f32"];
   return (
     <div style={{minHeight:"100vh",background:t.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       {state.tournamentLogo&&<img src={state.tournamentLogo} alt="" style={{height:56,objectFit:"contain",marginBottom:16,opacity:vis?1:0,transition:"opacity .8s"}} />}
-      <h1 style={{margin:"0 0 40px",fontSize:"clamp(22px,5vw,52px)",fontWeight:800,color:t.text,textAlign:"center",opacity:vis?1:0,transition:"opacity .8s .2s"}}>Final Standings</h1>
-      <div style={{display:"flex",alignItems:"flex-end",gap:10}}>
-        {trio.map(({tm,rank,h},i)=>(
-          <div key={tm.id} style={{display:"flex",flexDirection:"column",alignItems:"center",opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(60px)",transition:`all .7s cubic-bezier(.34,1.56,.64,1) ${.1+i*.15}s`}}>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,marginBottom:10}}>
-              <Ico name="medal" size={rank===1?34:24} color={medalColor[rank]} />
-              <Av src={tm.teamLogo} name={tm.name} size={rank===1?70:52} />
-              <div style={{textAlign:"center"}}>
-                <div style={{fontWeight:800,fontSize:rank===1?17:14,color:t.text}}>{tm.name}</div>
-                {tm.playerName&&<div style={{fontSize:11,color:t.sub}}>{tm.playerName}</div>}
-              </div>
-              <div style={{fontWeight:800,fontSize:rank===1?26:20,color:rank===1?t.accent:t.text}}>{teamTotal(tm)} pts</div>
-            </div>
-            <div style={{width:rank===1?150:120,height:h,borderRadius:"10px 10px 0 0",background:rank===1?t.accent+"18":t.isDark?"rgba(255,255,255,.04)":"rgba(0,0,0,.04)",border:`2px solid ${rank===1?t.accent:t.border}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <span style={{fontSize:rank===1?64:48,fontWeight:900,color:t.border,opacity:.3}}>{rank}</span>
-            </div>
-          </div>
-        ))}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,opacity:vis?1:0,transition:"opacity .6s .1s"}}>
+        <h1 style={{margin:0,fontSize:"clamp(22px,5vw,52px)",fontWeight:800,color:t.text,textAlign:"center"}}>{showCoach?"Coach Championship":"Final Standings"}</h1>
       </div>
-      {ranked.length>3&&(
-        <div style={{marginTop:32,width:"100%",maxWidth:480}}>
-          {ranked.slice(3).map((tm,i)=>(
-            <div key={tm.id} style={{...cSt(t,{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",marginBottom:5}),opacity:vis?1:0,transition:`opacity .4s ease ${.6+i*.07}s`}}>
-              <span style={{fontWeight:700,color:t.sub,width:18}}>{i+4}</span>
-              <Av src={tm.teamLogo} name={tm.name} size={28} />
-              <span style={{fontWeight:600,flex:1,color:t.text}}>{tm.name}</span>
-              <span style={{fontWeight:800,color:t.text}}>{teamTotal(tm)} pts</span>
+      <div style={{display:"flex",gap:6,marginBottom:32,opacity:vis?1:0,transition:"opacity .6s .2s"}}>
+        <button onClick={()=>setShowCoach(false)} style={bSt(!showCoach?t.accent:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",!showCoach?(t.isDark?"#111":"#fff"):t.text,{padding:"6px 16px",fontSize:12})}>
+          <Ico name="trophy" size={13} /> Team Standings
+        </button>
+        <button onClick={()=>setShowCoach(true)} style={bSt(showCoach?t.accent2:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",showCoach?(t.isDark?"#111":"#fff"):t.text,{padding:"6px 16px",fontSize:12})}>
+          <Ico name="star" size={13} /> Coach Championship
+        </button>
+      </div>
+      {showCoach?(
+        <CoachChampionshipBoard state={state} t={t} vis={vis} />
+      ):(
+        <>
+          <div style={{display:"flex",alignItems:"flex-end",gap:10}}>
+            {trio.map(({tm,rank,h},i)=>(
+              <div key={tm.id} style={{display:"flex",flexDirection:"column",alignItems:"center",opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(60px)",transition:`all .7s cubic-bezier(.34,1.56,.64,1) ${.1+i*.15}s`}}>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,marginBottom:10}}>
+                  <Ico name="medal" size={rank===1?34:24} color={medalColor[rank]} />
+                  <Av src={tm.teamLogo} name={tm.name} size={rank===1?70:52} />
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontWeight:800,fontSize:rank===1?17:14,color:t.text}}>{tm.name}</div>
+                    {tm.playerName&&<div style={{fontSize:11,color:t.sub}}>{tm.playerName}</div>}
+                  </div>
+                  <div style={{fontWeight:800,fontSize:rank===1?26:20,color:rank===1?t.accent:t.text}}>{teamTotal(tm)} pts</div>
+                </div>
+                <div style={{width:rank===1?150:120,height:h,borderRadius:"10px 10px 0 0",background:rank===1?t.accent+"18":t.isDark?"rgba(255,255,255,.04)":"rgba(0,0,0,.04)",border:`2px solid ${rank===1?t.accent:t.border}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <span style={{fontSize:rank===1?64:48,fontWeight:900,color:t.border,opacity:.3}}>{rank}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {ranked.length>3&&(
+            <div style={{marginTop:32,width:"100%",maxWidth:480}}>
+              {ranked.slice(3).map((tm,i)=>(
+                <div key={tm.id} style={{...cSt(t,{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",marginBottom:5}),opacity:vis?1:0,transition:`opacity .4s ease ${.6+i*.07}s`}}>
+                  <span style={{fontWeight:700,color:t.sub,width:18}}>{i+4}</span>
+                  <Av src={tm.teamLogo} name={tm.name} size={28} />
+                  <span style={{fontWeight:600,flex:1,color:t.text}}>{tm.name}</span>
+                  <span style={{fontWeight:800,color:t.text}}>{teamTotal(tm)} pts</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -373,12 +635,20 @@ function Podium({state,t}) {
 function PublicView({state}) {
   const t=getTheme(state);
   const phase=phaseOf(state.currentPhase);
+  const [showCoach,setShowCoach]=useState(false);
   if (phase.type==="podium") return <Podium state={state} t={t} />;
   if (phase.type==="setup")  return <PreGamePublic state={state} t={t} />;
   const ranked=rankTeams(state.teams);
   const medalColor=["#f7c948","#b0b0b0","#cd7f32"];
   const isDraft=phase.type==="draft";
   const isGame=phase.type==="game";
+  const coachSorted=[...state.teams].sort((a,b)=>{
+    const ba=teamBonus(a),bb=teamBonus(b);
+    if(bb!==ba) return bb-ba;
+    const sa=(a.strikes||[0,0,0]).reduce((x,y)=>x+y,0);
+    const sb=(b.strikes||[0,0,0]).reduce((x,y)=>x+y,0);
+    return sa-sb;
+  });
   return (
     <div style={{minHeight:"100vh",background:t.bg,color:t.text}}>
       <div style={{textAlign:"center",padding:"32px 20px 20px"}}>
@@ -398,37 +668,84 @@ function PublicView({state}) {
       </div>
       {isDraft&&<DraftPublic state={state} t={t} phase={phase} />}
       <div style={{maxWidth:820,margin:"0 auto",padding:"0 16px 40px"}}>
-        <div style={{display:"grid",gridTemplateColumns:"44px 1fr 72px 68px 56px",gap:8,padding:"0 12px 8px",fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",borderBottom:`1px solid ${t.border}`}}>
-          <div>#</div><div>Team</div><div style={{textAlign:"right"}}>Pts</div><div style={{textAlign:"center"}}>Strikes</div><div style={{textAlign:"right"}}>Bonus</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+          <div style={{display:"flex",gap:5}}>
+            <button onClick={()=>setShowCoach(false)} style={bSt(!showCoach?t.accent:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",!showCoach?(t.isDark?"#111":"#fff"):t.sub,{padding:"5px 13px",fontSize:11})}>
+              <Ico name="trophy" size={12} /> Teams
+            </button>
+            <button onClick={()=>setShowCoach(true)} style={bSt(showCoach?t.accent2:t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",showCoach?"#fff":t.sub,{padding:"5px 13px",fontSize:11})}>
+              <Ico name="star" size={12} /> Coach Cup
+            </button>
+          </div>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:6}}>
-          {ranked.map((tm,idx)=>{
-            const tot=teamTotal(tm);
-            const bon=teamBonus(tm);
-            const allS=(tm.strikes||[0,0,0]).reduce((a,b)=>a+b,0);
-            return (
-              <div key={tm.id} style={{display:"grid",gridTemplateColumns:"44px 1fr 72px 68px 56px",gap:8,padding:"10px 12px",borderRadius:10,background:t.surface,border:`1px solid ${idx===0?t.accent+"44":t.border}`,alignItems:"center"}}>
-                <div style={{textAlign:"center"}}>
-                  {idx<3?<Ico name="medal" size={20} color={medalColor[idx]} />:<span style={{fontWeight:700,color:t.sub,fontSize:14}}>{idx+1}</span>}
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
-                  <Av src={tm.teamLogo} name={tm.name} size={36} />
-                  <div style={{minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:t.text}}>{tm.name}</div>
-                    <div style={{display:"flex",gap:5,alignItems:"center",marginTop:2}}>
-                      {tm.playerName&&<><Av src={tm.playerAvatar} name={tm.playerName} size={14} round /><span style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.playerName}</span></>}
-                      {tm.coachName&&<><span style={{color:t.border,fontSize:10}}>|</span><Av src={tm.coachAvatar} name={tm.coachName} size={14} round /><span style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.coachName}</span></>}
+        {!showCoach?(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"44px 1fr 72px 68px 56px",gap:8,padding:"0 12px 8px",fontSize:11,fontWeight:700,letterSpacing:.5,color:t.sub,textTransform:"uppercase",borderBottom:`1px solid ${t.border}`}}>
+              <div>#</div><div>Team</div><div style={{textAlign:"right"}}>Pts</div><div style={{textAlign:"center"}}>Strikes</div><div style={{textAlign:"right"}}>Bonus</div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:6}}>
+              {ranked.map((tm,idx)=>{
+                const tot=teamTotal(tm);
+                const bon=teamBonus(tm);
+                const allS=(tm.strikes||[0,0,0]).reduce((a,b)=>a+b,0);
+                return (
+                  <div key={tm.id} style={{display:"grid",gridTemplateColumns:"44px 1fr 72px 68px 56px",gap:8,padding:"10px 12px",borderRadius:10,background:t.surface,border:`1px solid ${idx===0?t.accent+"44":t.border}`,alignItems:"center"}}>
+                    <div style={{textAlign:"center"}}>
+                      {idx<3?<Ico name="medal" size={20} color={medalColor[idx]} />:<span style={{fontWeight:700,color:t.sub,fontSize:14}}>{idx+1}</span>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+                      <Av src={tm.teamLogo} name={tm.name} size={36} />
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:t.text}}>{tm.name}</div>
+                        <div style={{display:"flex",gap:5,alignItems:"center",marginTop:2}}>
+                          {tm.playerName&&<><Av src={tm.playerAvatar} name={tm.playerName} size={14} round /><span style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.playerName}</span></>}
+                          {tm.coachName&&<><span style={{color:t.border,fontSize:10}}>|</span><Av src={tm.coachAvatar} name={tm.coachName} size={14} round /><span style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.coachName}</span></>}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right",fontWeight:800,fontSize:22,color:idx===0?t.accent:t.text}}>{tot}</div>
+                    <div style={{display:"flex",justifyContent:"center"}}><StrikePips count={allS} /></div>
+                    <div style={{textAlign:"right",fontWeight:700,fontSize:15,color:bon>0?"#22c55e":t.sub}}>+{bon}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{textAlign:"center",marginTop:18,fontSize:11,color:t.sub}}>Tiebreaker: Total Bonus Points · Game 3 = ×2 pts</p>
+          </>
+        ):(
+          <>
+            <div style={{fontSize:12,color:t.sub,textAlign:"center",marginBottom:12}}>Coach Championship Cup · Most Meta Bonus Points wins</div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {coachSorted.map((tm,i)=>{
+                const bon=teamBonus(tm);
+                const totalStrikes=(tm.strikes||[0,0,0]).reduce((a,b)=>a+b,0);
+                const rankColors=["#f7c948","#b0b0b0","#cd7f32"];
+                return (
+                  <div key={tm.id} style={{display:"grid",gridTemplateColumns:"32px 40px 1fr 72px 66px",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,background:i===0?t.accent+"15":t.surface,border:`1px solid ${i===0?t.accent+"44":t.border}`}}>
+                    <div style={{display:"flex",justifyContent:"center"}}>
+                      {i<3?<Ico name="medal" size={20} color={rankColors[i]} />:<span style={{fontWeight:800,fontSize:13,color:t.sub,textAlign:"center"}}>{i+1}</span>}
+                    </div>
+                    <Av src={tm.coachAvatar||tm.teamLogo} name={tm.coachName||tm.name} size={34} round />
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:13,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.coachName||"(No Coach)"}</div>
+                      <div style={{fontSize:11,color:t.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tm.name}</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontWeight:900,fontSize:20,color:bon>0?"#22c55e":t.sub,lineHeight:1}}>{bon}</div>
+                      <div style={{fontSize:10,color:t.sub,fontWeight:600,letterSpacing:.3}}>BONUS</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{display:"flex",justifyContent:"center",marginBottom:2}}><StrikePips count={totalStrikes} size={7} /></div>
+                      <div style={{fontWeight:700,fontSize:12,color:totalStrikes>0?"#ef4444":t.sub,lineHeight:1}}>{totalStrikes}</div>
+                      <div style={{fontSize:10,color:t.sub,fontWeight:600,letterSpacing:.3}}>STRIKES</div>
                     </div>
                   </div>
-                </div>
-                <div style={{textAlign:"right",fontWeight:800,fontSize:22,color:idx===0?t.accent:t.text}}>{tot}</div>
-                <div style={{display:"flex",justifyContent:"center"}}><StrikePips count={allS} /></div>
-                <div style={{textAlign:"right",fontWeight:700,fontSize:15,color:bon>0?"#22c55e":t.sub}}>+{bon}</div>
-              </div>
-            );
-          })}
-        </div>
-        <p style={{textAlign:"center",marginTop:18,fontSize:11,color:t.sub}}>Tiebreaker: Total Bonus Points · Game 3 = ×2 pts</p>
+                );
+              })}
+            </div>
+            <p style={{textAlign:"center",marginTop:14,fontSize:11,color:t.sub}}>Tiebreaker: Fewest total strikes</p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -675,17 +992,27 @@ function ScoringTab({state,setState,t}) {
 // ─── DRAFT TAB ────────────────────────────────────────────────────────────────
 function DraftTab({state,setState,t}) {
   const gameNum=state.currentGame||1;
-  const displayGame = (gameNum===2||gameNum===3)?1:gameNum;
-  const savedPool=state.words?.[displayGame]||{pool:[]};
+  const banSystem=state.banSystem||"original";
+  const isNew=banSystem==="new";
+
+  // Pool always comes from game 1
+  const savedPool=state.words?.[1]||{pool:[]};
   const savedLocal=state.words?.[gameNum]||{banned:[],assignments:{}};
   const [pool,setPool]=useState(savedPool.pool||[]);
   const [banned,setBanned]=useState(savedLocal.banned||[]);
   const [asgn,setAsgn]=useState(savedLocal.assignments||{});
   const [wInput,setWInput]=useState("");
+  const [showPoolModal,setShowPoolModal]=useState(false);
 
-  // FIX: reset local state when game switches
+  // For New System: bans from previous games are locked/inherited
+  const inheritedBanned=isNew&&gameNum>1
+    ? [...new Set([...(state.words?.[1]?.banned||[]),...(gameNum>2?(state.words?.[2]?.banned||[]):[])].filter(w=>!banned.includes(w)))]
+    : [];
+  const allBanned=[...banned,...inheritedBanned];
+  const banLimit=isNew?4:8;
+
   useEffect(()=>{
-    const p=state.words?.[displayGame]||{};
+    const p=state.words?.[1]||{};
     const l=state.words?.[gameNum]||{};
     setPool(p.pool||[]);
     setBanned(l.banned||[]);
@@ -694,10 +1021,8 @@ function DraftTab({state,setState,t}) {
 
   const save=()=>setState(s=>{
     const nextWords={...s.words};
-    // persist shared pool back to game 1
     const g1 = nextWords[1]||{};
     nextWords[1] = {...g1, pool};
-    // persist banned + assignments for the current game
     const cur = nextWords[gameNum]||{};
     nextWords[gameNum] = {...cur, banned, assignments: asgn};
     return {...s, words: nextWords};
@@ -716,8 +1041,10 @@ function DraftTab({state,setState,t}) {
   };
 
   const toggleBan=(w)=>{
+    // Can't touch inherited bans in new system
+    if(isNew&&inheritedBanned.includes(w)) return;
     if(banned.includes(w)){setBanned(b=>b.filter(x=>x!==w));}
-    else if(banned.length<8){
+    else if(banned.length<banLimit){
       setBanned(b=>[...b,w]);
       setAsgn(a=>{const n={...a};Object.keys(n).forEach(k=>{if(n[k]===w)delete n[k];});return n;});
     }
@@ -732,16 +1059,23 @@ function DraftTab({state,setState,t}) {
     });
   };
 
-  const available=pool.filter(w=>!banned.includes(w));
+  const available=pool.filter(w=>!allBanned.includes(w));
   const ranked=gameNum===1?state.teams:rankTeams(state.teams);
   const takenByOther=(word,teamId)=>Object.entries(asgn).some(([k,v])=>v===word&&Number(k)!==teamId);
+
+  const gridCols=isNew?"1fr 1fr":"1fr 1fr 1fr";
 
   return (
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
         <div>
           <h2 style={{margin:0,fontWeight:800,fontSize:20,color:t.text}}>Game {gameNum} Draft Board</h2>
-          <p style={{margin:"2px 0 0",color:t.sub,fontSize:13}}>{gameNum>1?"Standings order (1st picks first)":"Registration order"}</p>
+          <div style={{display:"flex",gap:6,alignItems:"center",marginTop:4}}>
+            <p style={{margin:0,color:t.sub,fontSize:13}}>{gameNum>1?"Standings order (1st picks first)":"Registration order"}</p>
+            <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:isNew?"rgba(59,130,246,.1)":t.accent+"15",color:isNew?"#3b82f6":t.accent,fontWeight:700}}>
+              {isNew?"New System":"Original"}
+            </span>
+          </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
           {[1,2,3].map(g=>(
@@ -755,9 +1089,26 @@ function DraftTab({state,setState,t}) {
           </button>
         </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
+
+      {/* New System inherited ban notice */}
+      {isNew&&inheritedBanned.length>0&&(
+        <div style={{marginBottom:14,padding:"10px 14px",borderRadius:10,background:"rgba(59,130,246,.06)",border:"1px solid rgba(59,130,246,.2)",fontSize:12,color:t.sub}}>
+          <span style={{fontWeight:700,color:"#3b82f6"}}>New System: </span>
+          {inheritedBanned.length} word{inheritedBanned.length>1?"s":""} carried over from prior games and permanently banned: {" "}
+          {inheritedBanned.map(w=><span key={w} style={{fontWeight:700,color:"#ef4444",marginRight:4}}>{w}</span>)}
+          · You may ban up to <strong>4 new words</strong> this game.
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:gridCols,gap:14}}>
+        {/* Word Pool */}
         <div style={cSt(t,{padding:16})}>
-          <div style={{fontWeight:700,fontSize:11,color:t.sub,letterSpacing:.5,textTransform:"uppercase",marginBottom:10}}>Word Pool ({pool.length}/16)</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <div style={{fontWeight:700,fontSize:11,color:t.sub,letterSpacing:.5,textTransform:"uppercase"}}>Word Pool ({pool.length}/16)</div>
+            <button onClick={()=>setShowPoolModal(true)} style={bSt(t.isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)",t.sub,{padding:"3px 9px",fontSize:11})}>
+              <Ico name="plus" size={11} /> Expand
+            </button>
+          </div>
           <div style={{display:"flex",gap:6,marginBottom:10}}>
             <input value={wInput} onChange={e=>setWInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addWord()}
               placeholder="Add word…" style={{...iSt(t,{flex:1,fontSize:12})}} />
@@ -766,52 +1117,133 @@ function DraftTab({state,setState,t}) {
           <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
             {pool.map(w=>{
               const ib=banned.includes(w);
-              const ia=!ib&&Object.values(asgn).includes(w);
+              const isInh=inheritedBanned.includes(w);
+              const ia=!ib&&!isInh&&Object.values(asgn).includes(w);
+              const isAllBanned=allBanned.includes(w);
               return (
-                <div key={w} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"3px 9px",borderRadius:16,cursor:"pointer",background:ib?"rgba(239,68,68,.1)":ia?"rgba(34,197,94,.1)":t.isDark?"rgba(255,255,255,.06)":"rgba(0,0,0,.05)",border:`1px solid ${ib?"rgba(239,68,68,.3)":ia?"rgba(34,197,94,.25)":t.border}`}}
+                <div key={w} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"3px 9px",borderRadius:16,cursor:isInh?"default":"pointer",background:isAllBanned?"rgba(239,68,68,.1)":ia?"rgba(34,197,94,.1)":t.isDark?"rgba(255,255,255,.06)":"rgba(0,0,0,.05)",border:`1px solid ${isAllBanned?"rgba(239,68,68,.3)":ia?"rgba(34,197,94,.25)":t.border}`,opacity:isInh?.6:1}}
                   onClick={()=>toggleBan(w)}>
-                  <span style={{fontSize:12,fontWeight:600,color:ib?"#ef4444":ia?"#22c55e":t.text,textDecoration:ib?"line-through":"none"}}>{w}</span>
-                  <span onClick={e=>{e.stopPropagation();removeWord(w);}} style={{fontSize:10,color:t.sub,cursor:"pointer",marginLeft:1}}>×</span>
+                  <span style={{fontSize:12,fontWeight:600,color:isAllBanned?"#ef4444":ia?"#22c55e":t.text,textDecoration:isAllBanned?"line-through":"none"}}>{w}</span>
+                  {!isInh&&<span onClick={e=>{e.stopPropagation();removeWord(w);}} style={{fontSize:10,color:t.sub,cursor:"pointer",marginLeft:1}}>×</span>}
                 </div>
               );
             })}
           </div>
-          <p style={{margin:"8px 0 0",fontSize:10,color:t.sub}}>Click word to toggle ban · max 8 banned</p>
+          <p style={{margin:"8px 0 0",fontSize:10,color:t.sub}}>
+            Click word to toggle ban · {isNew?`max ${banLimit} new bans`:`max ${banLimit} banned`}
+            {isNew&&inheritedBanned.length>0?` (${banned.length}/${banLimit} used)`:banned.length>0?` (${banned.length}/${banLimit})`:``}
+          </p>
         </div>
+
+        {/* Banned */}
         <div style={cSt(t,{padding:16,borderColor:"rgba(239,68,68,.25)"})}>
           <div style={{display:"flex",alignItems:"center",gap:6,fontWeight:700,fontSize:11,color:"#ef4444",letterSpacing:.5,textTransform:"uppercase",marginBottom:10}}>
-            <Ico name="ban" size={12} color="#ef4444" /> Banned ({banned.length}/8)
+            <Ico name="ban" size={12} color="#ef4444" /> {isNew?"Banned This Game":"Banned"} ({banned.length}/{banLimit})
           </div>
-          {banned.length===0?<p style={{color:t.sub,fontSize:13,margin:0}}>Click words in the pool to ban them.</p>
-          :<div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-            {banned.map(w=><span key={w} onClick={()=>toggleBan(w)} style={{padding:"3px 9px",borderRadius:16,fontSize:12,fontWeight:600,background:"rgba(239,68,68,.1)",color:"#ef4444",border:"1px solid rgba(239,68,68,.25)",cursor:"pointer"}}>{w} ×</span>)}
-          </div>}
+          {isNew&&inheritedBanned.length>0&&(
+            <div style={{marginBottom:8}}>
+              <div style={{fontSize:10,fontWeight:700,color:t.sub,textTransform:"uppercase",letterSpacing:.4,marginBottom:5}}>Locked from prior games</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                {inheritedBanned.map(w=><span key={w} style={{padding:"2px 7px",borderRadius:12,fontSize:11,fontWeight:600,background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.55)",border:"1px solid rgba(239,68,68,.15)",textDecoration:"line-through"}}>{w}</span>)}
+              </div>
+            </div>
+          )}
+          {banned.length===0
+            ?<p style={{color:t.sub,fontSize:13,margin:0}}>Click words in the pool to ban them.</p>
+            :<div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+              {banned.map(w=><span key={w} onClick={()=>toggleBan(w)} style={{padding:"3px 9px",borderRadius:16,fontSize:12,fontWeight:600,background:"rgba(239,68,68,.1)",color:"#ef4444",border:"1px solid rgba(239,68,68,.25)",cursor:"pointer"}}>{w} ×</span>)}
+            </div>
+          }
           <div style={{marginTop:12,padding:"9px 11px",borderRadius:8,background:t.isDark?"rgba(239,68,68,.05)":"rgba(239,68,68,.03)",border:"1px solid rgba(239,68,68,.1)"}}>
-            <p style={{margin:0,fontSize:11,color:t.sub}}>If a team submits a banned word: give them a strike in Scoring.</p>
+            <p style={{margin:0,fontSize:11,color:t.sub}}>
+              {isNew
+                ?`New System: +4 bans stack each game. Total banned: ${allBanned.length}.`
+                :"If a team submits a banned word: give them a strike in Scoring."
+              }
+            </p>
           </div>
         </div>
-        <div style={cSt(t,{padding:16})}>
-          <div style={{display:"flex",alignItems:"center",gap:6,fontWeight:700,fontSize:11,color:t.sub,letterSpacing:.5,textTransform:"uppercase",marginBottom:10}}>
-            <Ico name="star" size={12} color="#f59e0b" /> Meta Assignments
+
+        {/* Meta Assignments — Original system only */}
+        {!isNew&&(
+          <div style={cSt(t,{padding:16})}>
+            <div style={{display:"flex",alignItems:"center",gap:6,fontWeight:700,fontSize:11,color:t.sub,letterSpacing:.5,textTransform:"uppercase",marginBottom:10}}>
+              <Ico name="star" size={12} color="#f59e0b" /> Meta Assignments
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {ranked.map((tm,i)=>{
+                const cur=Object.entries(asgn).find(([id])=>Number(id)===tm.id)?.[1]||"";
+                return (
+                  <div key={tm.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 6px",borderRadius:7,background:t.isDark?"rgba(255,255,255,.02)":"rgba(0,0,0,.02)"}}>
+                    <span style={{fontSize:10,color:t.sub,width:14,fontWeight:700}}>{i+1}</span>
+                    <Av src={tm.teamLogo} name={tm.name} size={22} />
+                    <span style={{fontSize:12,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:t.text}}>{tm.name}</span>
+                    <select value={cur} onChange={e=>assignWord(e.target.value,e.target.value?tm.id:null)} style={{...iSt(t,{width:104,fontSize:11,padding:"4px 6px"})}}>
+                      <option value="">— none —</option>
+                      {available.map(w=><option key={w} value={w} disabled={takenByOther(w,tm.id)}>{w}{takenByOther(w,tm.id)?" ✓":""}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {ranked.map((tm,i)=>{
-              const cur=Object.entries(asgn).find(([id])=>Number(id)===tm.id)?.[1]||"";
-              return (
-                <div key={tm.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 6px",borderRadius:7,background:t.isDark?"rgba(255,255,255,.02)":"rgba(0,0,0,.02)"}}>
-                  <span style={{fontSize:10,color:t.sub,width:14,fontWeight:700}}>{i+1}</span>
-                  <Av src={tm.teamLogo} name={tm.name} size={22} />
-                  <span style={{fontSize:12,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:t.text}}>{tm.name}</span>
-                  <select value={cur} onChange={e=>assignWord(e.target.value,e.target.value?tm.id:null)} style={{...iSt(t,{width:104,fontSize:11,padding:"4px 6px"})}}>
-                    <option value="">— none —</option>
-                    {available.map(w=><option key={w} value={w} disabled={takenByOther(w,tm.id)}>{w}{takenByOther(w,tm.id)?" ✓":""}</option>)}
-                  </select>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        )}
       </div>
+
+      {/* Word Pool Expand Modal */}
+      {showPoolModal&&(
+        <div onClick={()=>setShowPoolModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{...cSt(t,{padding:28,maxWidth:700,width:"100%",maxHeight:"82vh",overflow:"hidden",display:"flex",flexDirection:"column"})}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:18,color:t.text}}>Word Pool — Game {gameNum}</div>
+                <div style={{fontSize:12,color:t.sub,marginTop:2}}>{pool.length}/16 words · {allBanned.length} banned total · Click to toggle ban</div>
+              </div>
+              <button onClick={()=>setShowPoolModal(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:t.sub,padding:4}}>
+                <Ico name="x" size={20} />
+              </button>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              <input value={wInput} onChange={e=>setWInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addWord()}
+                placeholder="Add word…" style={{...iSt(t,{flex:1})}} />
+              <button onClick={addWord} style={bSt(t.accent,t.isDark?"#111":"#fff",{padding:"8px 16px"})}>
+                <Ico name="plus" size={14} /> Add
+              </button>
+            </div>
+            <div style={{overflowY:"auto",flex:1}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:8}}>
+                {pool.map(w=>{
+                  const ib=banned.includes(w);
+                  const isInh=inheritedBanned.includes(w);
+                  const isAllBanned=allBanned.includes(w);
+                  const ia=!isAllBanned&&Object.values(asgn).includes(w);
+                  return (
+                    <div key={w} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 13px",borderRadius:10,cursor:isInh?"default":"pointer",background:isAllBanned?"rgba(239,68,68,.12)":ia?"rgba(34,197,94,.1)":t.isDark?"rgba(255,255,255,.06)":"rgba(0,0,0,.05)",border:`1.5px solid ${isAllBanned?"rgba(239,68,68,.4)":ia?"rgba(34,197,94,.35)":t.border}`,opacity:isInh?.6:1}}
+                      onClick={()=>toggleBan(w)}>
+                      <span style={{fontWeight:700,fontSize:14,color:isAllBanned?"#ef4444":ia?"#22c55e":t.text,textDecoration:isAllBanned?"line-through":"none",flex:1}}>{w}</span>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        {isInh&&<span style={{fontSize:9,color:"rgba(239,68,68,.5)",fontWeight:700}}>LOCKED</span>}
+                        {ib&&!isInh&&<Ico name="ban" size={13} color="#ef4444" />}
+                        {ia&&<Ico name="star" size={13} color="#22c55e" />}
+                        {!isInh&&<span onClick={e=>{e.stopPropagation();removeWord(w);}} style={{fontSize:14,color:t.sub,cursor:"pointer",lineHeight:1}}>×</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+                {pool.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",color:t.sub,fontSize:14,padding:"40px 0"}}>No words yet. Add some above!</div>}
+              </div>
+              <div style={{marginTop:16,display:"flex",flexWrap:"wrap",gap:6,borderTop:`1px solid ${t.border}`,paddingTop:14}}>
+                <div style={{fontSize:11,color:t.sub,width:"100%",marginBottom:4,fontWeight:600}}>Legend</div>
+                <span style={{padding:"3px 10px",borderRadius:10,fontSize:12,background:"rgba(239,68,68,.1)",color:"#ef4444",border:"1px solid rgba(239,68,68,.3)"}}>Banned</span>
+                {!isNew&&<span style={{padding:"3px 10px",borderRadius:10,fontSize:12,background:"rgba(34,197,94,.1)",color:"#22c55e",border:"1px solid rgba(34,197,94,.3)"}}>Assigned</span>}
+                {isNew&&<span style={{padding:"3px 10px",borderRadius:10,fontSize:12,background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.55)",border:"1px solid rgba(239,68,68,.15)"}}>Locked (prev game)</span>}
+                <span style={{padding:"3px 10px",borderRadius:10,fontSize:12,background:t.isDark?"rgba(255,255,255,.06)":"rgba(0,0,0,.05)",color:t.text,border:`1px solid ${t.border}`}}>Available</span>
+                <span style={{fontSize:11,color:t.sub,marginLeft:"auto",alignSelf:"center"}}>Banned: {banned.length}/{banLimit} {isNew?"(this game)":"max"}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -823,7 +1255,7 @@ function TeamsTab({state,setState,t}) {
     <div>
       <h2 style={{margin:"0 0 4px",fontWeight:800,fontSize:20,color:t.text}}>Team Roster</h2>
       <p style={{margin:"0 0 16px",color:t.sub,fontSize:13}}>Click avatar icons to upload photos.</p>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(330px,1fr))",gap:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:12}}>
         {state.teams.map(tm=>(
           <div key={tm.id} style={cSt(t,{padding:18})}>
             <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:12,alignItems:"start"}}>
@@ -835,8 +1267,14 @@ function TeamsTab({state,setState,t}) {
               <div style={{display:"flex",flexDirection:"column",gap:7}}>
                 <div><Lbl t={t}>Team Name</Lbl><input value={tm.name} onChange={e=>upd(tm.id,"name",e.target.value)} style={iSt(t)} /></div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-                  <div><Lbl t={t}>Player</Lbl><input value={tm.playerName} onChange={e=>upd(tm.id,"playerName",e.target.value)} style={iSt(t)} /></div>
+                  <div><Lbl t={t}>Driver (Player)</Lbl><input value={tm.playerName} onChange={e=>upd(tm.id,"playerName",e.target.value)} style={iSt(t)} /></div>
                   <div><Lbl t={t}>Coach</Lbl><input value={tm.coachName} onChange={e=>upd(tm.id,"coachName",e.target.value)} style={iSt(t)} /></div>
+                </div>
+                <div><Lbl t={t}>Team Description</Lbl><input value={tm.description||""} onChange={e=>upd(tm.id,"description",e.target.value)} placeholder="Short bio or tagline…" style={iSt(t)} /></div>
+                <div><Lbl t={t}>Team Quote / Motto</Lbl><input value={tm.quote||""} onChange={e=>upd(tm.id,"quote",e.target.value)} placeholder="Team motto or battle cry…" style={iSt(t)} /></div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+                  <div><Lbl t={t}>Driver Quote</Lbl><input value={tm.playerQuote||""} onChange={e=>upd(tm.id,"playerQuote",e.target.value)} placeholder="Driver's personal quote…" style={iSt(t)} /></div>
+                  <div><Lbl t={t}>Coach Quote</Lbl><input value={tm.coachQuote||""} onChange={e=>upd(tm.id,"coachQuote",e.target.value)} placeholder="Coach's personal quote…" style={iSt(t)} /></div>
                 </div>
                 <details style={{marginTop:2}}>
                   <summary style={{fontSize:11,color:t.sub,cursor:"pointer",userSelect:"none"}}>Paste image URLs instead</summary>
@@ -871,6 +1309,7 @@ function SettingsTab({state,setState,t}) {
       isDark:state.isDark,
       accent:state.accent,
       accent2:state.accent2,
+      banSystem:state.banSystem||"original",
     };
     localStorage.setItem(STORAGE_KEY,JSON.stringify(fresh));
     setState(fresh);
@@ -917,6 +1356,31 @@ function SettingsTab({state,setState,t}) {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+      <div style={cSt(t,{padding:20,marginBottom:12})}>
+        <div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:6}}>Ban System</div>
+        <p style={{margin:"0 0 12px",fontSize:13,color:t.sub}}>Choose which banning rules to use during drafts. This affects how bans are tracked and displayed.</p>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {[
+            {v:"original",label:"Original System",desc:"Same 16-word pool, 8 different bans per game. Teams ban up to 8 words each game from the shared pool."},
+            {v:"new",label:"New System",desc:"+4 bans per game that stack: Game 1 bans 4, Game 2 bans 4 more (8 total), Game 3 bans 4 more (12 total). No Meta Assignments."},
+          ].map(opt=>(
+            <div key={opt.v} onClick={()=>setState(s=>({...s,banSystem:opt.v}))}
+              style={{display:"flex",gap:12,padding:"12px 14px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${(state.banSystem||"original")===opt.v?t.accent:t.border}`,background:(state.banSystem||"original")===opt.v?t.accent+"10":"transparent",transition:"all .15s"}}>
+              <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${(state.banSystem||"original")===opt.v?t.accent:t.border}`,background:(state.banSystem||"original")===opt.v?t.accent:"transparent",flexShrink:0,marginTop:2,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {(state.banSystem||"original")===opt.v&&<div style={{width:7,height:7,borderRadius:"50%",background:t.isDark?"#111":"#fff"}} />}
+              </div>
+              <div>
+                <div style={{fontWeight:700,fontSize:13,color:(state.banSystem||"original")===opt.v?t.accent:t.text}}>{opt.label}</div>
+                <div style={{fontSize:12,color:t.sub,marginTop:2}}>{opt.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:10,padding:"9px 12px",borderRadius:8,background:t.isDark?"rgba(255,255,255,.04)":"rgba(0,0,0,.03)",border:`1px solid ${t.border}`}}>
+          <span style={{fontSize:11,fontWeight:600,color:t.accent}}>Active: </span>
+          <span style={{fontSize:11,color:t.sub}}>{(state.banSystem||"original")==="original"?"Original — 8 bans per game, same pool all games":"New — +4 stacking bans per game, no Meta Assignments"}</span>
         </div>
       </div>
       <div style={cSt(t,{padding:20,borderColor:"rgba(239,68,68,.22)"})}>
