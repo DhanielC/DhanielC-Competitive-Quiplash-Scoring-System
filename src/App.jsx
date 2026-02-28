@@ -1,5 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
+// ─── RESPONSIVE HOOK ──────────────────────────────────────────────────────────
+function useWindowWidth() {
+  const [w, setW] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1280));
+  useEffect(() => {
+    const h = () => setW(window.innerWidth);
+    window.addEventListener("resize", h, { passive: true });
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return w;
+}
+
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 // Admin password is read from Vite env variable `VITE_ADMIN_PASSWORD`.
 // For security, do NOT hardcode secrets in source. Provide a `.env` file instead.
@@ -1096,6 +1107,8 @@ function GameplayGuide({ t }) {
     },
   ];
 
+  const winW = useWindowWidth();
+  const isMobile = winW < 640;
   const sec = SECTIONS[active];
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1, background: t.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -1109,19 +1122,32 @@ function GameplayGuide({ t }) {
           <div style={{ fontSize: 11, color: t.sub, fontWeight: 600, letterSpacing: .8, textTransform: "uppercase" }}>Formula Q Championship 2026</div>
         </div>
       </div>
-      {/* Body: left nav + content */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Left nav */}
-        <div style={{ width: 190, borderRight: `1px solid ${t.border}`, padding: "10px 8px", display: "flex", flexDirection: "column", gap: 2, flexShrink: 0, background: t.isDark ? "rgba(0,0,0,.2)" : "rgba(0,0,0,.02)" }}>
+      {/* Mobile: horizontal scrollable tab strip */}
+      {isMobile && (
+        <div style={{ display: "flex", overflowX: "auto", gap: 4, padding: "8px 10px", borderBottom: `1px solid ${t.border}`, flexShrink: 0, WebkitOverflowScrolling: "touch" }}>
           {SECTIONS.map((s, i) => (
             <button key={s.id} onClick={() => setActive(i)}
-              style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 9, border: `1px solid ${i === active ? s.accent + "55" : "transparent"}`, background: i === active ? s.accent + "18" : "transparent", color: i === active ? s.accent : t.sub, fontWeight: i === active ? 700 : 500, fontSize: 13, cursor: "pointer", textAlign: "left", width: "100%" }}>
-              <Ico name={s.icon} size={14} />{s.label}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 9, border: `1px solid ${i === active ? s.accent + "55" : "transparent"}`, background: i === active ? s.accent + "18" : "transparent", color: i === active ? s.accent : t.sub, fontWeight: i === active ? 700 : 500, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, minHeight: 44 }}>
+              <Ico name={s.icon} size={13} />{s.label}
             </button>
           ))}
         </div>
+      )}
+      {/* Body: left nav + content */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Left nav — desktop only */}
+        {!isMobile && (
+          <div style={{ width: 190, borderRight: `1px solid ${t.border}`, padding: "10px 8px", display: "flex", flexDirection: "column", gap: 2, flexShrink: 0, background: t.isDark ? "rgba(0,0,0,.2)" : "rgba(0,0,0,.02)" }}>
+            {SECTIONS.map((s, i) => (
+              <button key={s.id} onClick={() => setActive(i)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 9, border: `1px solid ${i === active ? s.accent + "55" : "transparent"}`, background: i === active ? s.accent + "18" : "transparent", color: i === active ? s.accent : t.sub, fontWeight: i === active ? 700 : 500, fontSize: 13, cursor: "pointer", textAlign: "left", width: "100%" }}>
+                <Ico name={s.icon} size={14} />{s.label}
+              </button>
+            ))}
+          </div>
+        )}
         {/* Content panel */}
-        <div style={{ flex: 1, padding: "26px 32px", overflowY: "auto" }}>
+        <div style={{ flex: 1, padding: isMobile ? "20px 16px" : "26px 32px", overflowY: "auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: t.text }}>{sec.label}</h2>
           </div>
@@ -1417,36 +1443,40 @@ function PublicView({ state, onAdminClick }) {
           {/* ── TEAMS LEADERBOARD ── */}
           {!showCoach && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 72px 68px 56px", gap: 8, padding: "0 12px 8px", fontSize: 11, fontWeight: 700, letterSpacing: .5, color: t.sub, textTransform: "uppercase", borderBottom: `1px solid ${t.border}` }}>
-                <div>#</div><div>Team</div><div style={{ textAlign: "right" }}>Pts</div><div style={{ textAlign: "center" }}>Strikes</div><div style={{ textAlign: "right" }}>Bonus</div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-                {ranked.map((tm, idx) => {
-                  const stats = getPhaseStats(tm, phase);
-                  const tot = stats.tot;
-                  const bon = stats.bon;
-                  const allS = stats.allS;
-                  return (
-                    <div key={tm.id} style={{ display: "grid", gridTemplateColumns: "44px 1fr 72px 68px 56px", gap: 8, padding: "10px 12px", borderRadius: 10, background: t.surface, border: `1px solid ${idx === 0 ? t.accent + "44" : t.border}`, alignItems: "center" }}>
-                      <div style={{ textAlign: "center" }}>
-                        {idx < 3 ? <Ico name="medal" size={20} color={medalColor[idx]} /> : <span style={{ fontWeight: 700, color: t.sub, fontSize: 14 }}>{idx + 1}</span>}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                        <Av src={tm.teamLogo} name={tm.name} size={36} />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.text }}>{tm.name}</div>
-                          <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 2 }}>
-                            {tm.playerName && <><Av src={tm.playerAvatar} name={tm.playerName} size={14} round /><span style={{ fontSize: 11, color: t.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tm.playerName}</span></>}
-                            {tm.coachName && <><span style={{ color: t.border, fontSize: 10 }}>|</span><Av src={tm.coachAvatar} name={tm.coachName} size={14} round /><span style={{ fontSize: 11, color: t.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tm.coachName}</span></>}
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                <div style={{ minWidth: 340 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 72px 68px 56px", gap: 8, padding: "0 12px 8px", fontSize: 11, fontWeight: 700, letterSpacing: .5, color: t.sub, textTransform: "uppercase", borderBottom: `1px solid ${t.border}` }}>
+                    <div>#</div><div>Team</div><div style={{ textAlign: "right" }}>Pts</div><div style={{ textAlign: "center" }}>Strikes</div><div style={{ textAlign: "right" }}>Bonus</div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+                    {ranked.map((tm, idx) => {
+                      const stats = getPhaseStats(tm, phase);
+                      const tot = stats.tot;
+                      const bon = stats.bon;
+                      const allS = stats.allS;
+                      return (
+                        <div key={tm.id} style={{ display: "grid", gridTemplateColumns: "44px 1fr 72px 68px 56px", gap: 8, padding: "10px 12px", borderRadius: 10, background: t.surface, border: `1px solid ${idx === 0 ? t.accent + "44" : t.border}`, alignItems: "center" }}>
+                          <div style={{ textAlign: "center" }}>
+                            {idx < 3 ? <Ico name="medal" size={20} color={medalColor[idx]} /> : <span style={{ fontWeight: 700, color: t.sub, fontSize: 14 }}>{idx + 1}</span>}
                           </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                            <Av src={tm.teamLogo} name={tm.name} size={36} />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.text }}>{tm.name}</div>
+                              <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 2 }}>
+                                {tm.playerName && <><Av src={tm.playerAvatar} name={tm.playerName} size={14} round /><span style={{ fontSize: 11, color: t.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tm.playerName}</span></>}
+                                {tm.coachName && <><span style={{ color: t.border, fontSize: 10 }}>|</span><Av src={tm.coachAvatar} name={tm.coachName} size={14} round /><span style={{ fontSize: 11, color: t.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tm.coachName}</span></>}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right", fontWeight: 800, fontSize: 22, color: idx === 0 ? t.accent : t.text }}>{tot}</div>
+                          <div style={{ textAlign: "center", fontWeight: 900, fontSize: 20, color: allS > 0 ? "#ef4444" : t.sub }}>{allS}</div>
+                          <div style={{ textAlign: "right", fontWeight: 700, fontSize: 15, color: bon > 0 ? "#22c55e" : t.sub }}>+{bon}</div>
                         </div>
-                      </div>
-                      <div style={{ textAlign: "right", fontWeight: 800, fontSize: 22, color: idx === 0 ? t.accent : t.text }}>{tot}</div>
-                      <div style={{ textAlign: "center", fontWeight: 900, fontSize: 20, color: allS > 0 ? "#ef4444" : t.sub }}>{allS}</div>
-                      <div style={{ textAlign: "right", fontWeight: 700, fontSize: 15, color: bon > 0 ? "#22c55e" : t.sub }}>+{bon}</div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               <p style={{ textAlign: "center", marginTop: 18, fontSize: 11, color: t.sub }}>Tiebreaker: Total Bonus Points · Game 3 = ×2 pts</p>
             </>
@@ -1455,34 +1485,38 @@ function PublicView({ state, onAdminClick }) {
           {/* ── COACH CUP — matches Teams table style ── */}
           {showCoach && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 72px 68px 56px", gap: 8, padding: "0 12px 8px", fontSize: 11, fontWeight: 700, letterSpacing: .5, color: t.sub, textTransform: "uppercase", borderBottom: `1px solid ${t.border}` }}>
-                <div>#</div><div>Coach</div><div style={{ textAlign: "right" }}>Bonus</div><div style={{ textAlign: "center" }}>Strikes</div><div></div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-                {coachSorted.map((tm, i) => {
-                  const stats = getPhaseStats(tm, phase);
-                  const bon = stats.bon;
-                  const totalStrikes = stats.allS;
-                  return (
-                    <div key={tm.id} style={{ display: "grid", gridTemplateColumns: "44px 1fr 72px 68px 56px", gap: 8, padding: "10px 12px", borderRadius: 10, background: t.surface, border: `1px solid ${i === 0 ? t.accent + "44" : t.border}`, alignItems: "center" }}>
-                      <div style={{ textAlign: "center" }}>
-                        {i < 3 ? <Ico name="medal" size={20} color={coachRankColors[i]} /> : <span style={{ fontWeight: 700, color: t.sub, fontSize: 14 }}>{i + 1}</span>}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                        <Av src={tm.coachAvatar || tm.teamLogo} name={tm.coachName || tm.name} size={36} round />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.text }}>{tm.coachName || "(No Coach)"}</div>
-                          <div style={{ fontSize: 11, color: t.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{tm.name}</div>
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                <div style={{ minWidth: 340 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 72px 68px 56px", gap: 8, padding: "0 12px 8px", fontSize: 11, fontWeight: 700, letterSpacing: .5, color: t.sub, textTransform: "uppercase", borderBottom: `1px solid ${t.border}` }}>
+                    <div>#</div><div>Coach</div><div style={{ textAlign: "right" }}>Bonus</div><div style={{ textAlign: "center" }}>Strikes</div><div></div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+                    {coachSorted.map((tm, i) => {
+                      const stats = getPhaseStats(tm, phase);
+                      const bon = stats.bon;
+                      const totalStrikes = stats.allS;
+                      return (
+                        <div key={tm.id} style={{ display: "grid", gridTemplateColumns: "44px 1fr 72px 68px 56px", gap: 8, padding: "10px 12px", borderRadius: 10, background: t.surface, border: `1px solid ${i === 0 ? t.accent + "44" : t.border}`, alignItems: "center" }}>
+                          <div style={{ textAlign: "center" }}>
+                            {i < 3 ? <Ico name="medal" size={20} color={coachRankColors[i]} /> : <span style={{ fontWeight: 700, color: t.sub, fontSize: 14 }}>{i + 1}</span>}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                            <Av src={tm.coachAvatar || tm.teamLogo} name={tm.coachName || tm.name} size={36} round />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.text }}>{tm.coachName || "(No Coach)"}</div>
+                              <div style={{ fontSize: 11, color: t.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{tm.name}</div>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right", fontWeight: 800, fontSize: 22, color: i === 0 ? t.accent : bon > 0 ? "#22c55e" : t.sub }}>{bon}</div>
+                          <div style={{ textAlign: "center", fontWeight: 900, fontSize: 22, color: totalStrikes > 0 ? "#ef4444" : t.sub }}>{totalStrikes}</div>
+                          <div />
                         </div>
-                      </div>
-                      <div style={{ textAlign: "right", fontWeight: 800, fontSize: 22, color: i === 0 ? t.accent : bon > 0 ? "#22c55e" : t.sub }}>{bon}</div>
-                      <div style={{ textAlign: "center", fontWeight: 900, fontSize: 22, color: totalStrikes > 0 ? "#ef4444" : t.sub }}>{totalStrikes}</div>
-                      <div />
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                  <p style={{ textAlign: "center", marginTop: 18, fontSize: 11, color: t.sub }}>Ranked by Meta Bonus Points · Tiebreaker: Fewest strikes</p>
+                </div>
               </div>
-              <p style={{ textAlign: "center", marginTop: 18, fontSize: 11, color: t.sub }}>Ranked by Meta Bonus Points · Tiebreaker: Fewest strikes</p>
             </>
           )}
         </div>
@@ -1494,6 +1528,9 @@ function PublicView({ state, onAdminClick }) {
 // ─── ADMIN SHELL ─────────────────────────────────────────────────────────────
 function Admin({ state, setState, t, onLogout }) {
   const [tab, setTab] = useState("phase");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const winW = useWindowWidth();
+  const isMobile = winW < 640;
   const phase = phaseOf(state.currentPhase);
   const navBg = t.isDark ? "#0d0d12" : "#eaeaf0";
   const tabs = [
@@ -1503,27 +1540,58 @@ function Admin({ state, setState, t, onLogout }) {
     { id: "teams", icon: "users", label: "Teams" },
     { id: "settings", icon: "settings", label: "Settings" },
   ];
+
+  const SidebarContent = () => (
+    <>
+      <div style={{ padding: "18px 14px 12px" }}>
+        <div style={{ fontWeight: 800, fontSize: 13, color: t.accent, letterSpacing: .5 }}>ADMIN</div>
+        <div style={{ fontSize: 11, color: t.sub, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{phase.label}</div>
+      </div>
+      <div style={{ flex: 1, padding: "4px 8px" }}>
+        {tabs.map(tb => (
+          <button key={tb.id} onClick={() => { setTab(tb.id); if (isMobile) setSidebarOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 10px", borderRadius: 8, border: "none", background: tab === tb.id ? t.accent + "20" : "transparent", color: tab === tb.id ? t.accent : t.sub, fontWeight: tab === tb.id ? 700 : 500, fontSize: 13, cursor: "pointer", marginBottom: 2, textAlign: "left", minHeight: 44 }}>
+            <Ico name={tb.icon} size={15} />{tb.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ padding: "10px 8px" }}>
+        <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", background: "transparent", color: "#ef4444", fontWeight: 600, fontSize: 13, cursor: "pointer", minHeight: 44 }}>
+          <Ico name="logout" size={15} color="#ef4444" />Logout
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div style={{ position: "fixed", inset: 0, display: "flex", background: t.bg, overflow: "hidden", zIndex: 999 }}>
-      <div style={{ width: 170, height: "100vh", background: navBg, borderRight: `1px solid ${t.border}`, display: "flex", flexDirection: "column", flexShrink: 0, boxSizing: "border-box" }}>
-        <div style={{ padding: "18px 14px 12px" }}>
-          <div style={{ fontWeight: 800, fontSize: 13, color: t.accent, letterSpacing: .5 }}>ADMIN</div>
-          <div style={{ fontSize: 11, color: t.sub, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{phase.label}</div>
+      {/* ── Desktop sidebar (always visible ≥640px) ── */}
+      {!isMobile && (
+        <div style={{ width: 170, height: "100vh", background: navBg, borderRight: `1px solid ${t.border}`, display: "flex", flexDirection: "column", flexShrink: 0, boxSizing: "border-box" }}>
+          <SidebarContent />
         </div>
-        <div style={{ flex: 1, padding: "4px 8px" }}>
-          {tabs.map(tb => (
-            <button key={tb.id} onClick={() => setTab(tb.id)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 10px", borderRadius: 8, border: "none", background: tab === tb.id ? t.accent + "20" : "transparent", color: tab === tb.id ? t.accent : t.sub, fontWeight: tab === tb.id ? 700 : 500, fontSize: 13, cursor: "pointer", marginBottom: 2, textAlign: "left" }}>
-              <Ico name={tb.icon} size={15} />{tb.label}
-            </button>
-          ))}
+      )}
+
+      {/* ── Mobile: hamburger button ── */}
+      {isMobile && (
+        <button onClick={() => setSidebarOpen(o => !o)} style={{ position: "fixed", top: 10, left: 10, zIndex: 10001, width: 40, height: 40, borderRadius: 10, border: `1px solid ${t.border}`, background: t.isDark ? "rgba(0,0,0,.85)" : "rgba(255,255,255,.92)", color: t.sub, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(10px)" }}>
+          <Ico name={sidebarOpen ? "x" : "menu"} size={18} />
+        </button>
+      )}
+
+      {/* ── Mobile: backdrop ── */}
+      {isMobile && sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.4)", backdropFilter: "blur(2px)" }} />
+      )}
+
+      {/* ── Mobile: slide-in drawer ── */}
+      {isMobile && (
+        <div style={{ position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 10001, width: 220, background: navBg, borderRight: `1px solid ${t.border}`, display: "flex", flexDirection: "column", transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform .25s cubic-bezier(.4,0,.2,1)", boxShadow: sidebarOpen ? "8px 0 32px rgba(0,0,0,.25)" : "none" }}>
+          <SidebarContent />
         </div>
-        <div style={{ padding: "10px 8px" }}>
-          <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", background: "transparent", color: "#ef4444", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-            <Ico name="logout" size={15} color="#ef4444" />Logout
-          </button>
-        </div>
-      </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", minHeight: "100vh", boxSizing: "border-box" }}>
+      )}
+
+      {/* ── Content area ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "60px 14px 24px" : 24, display: "flex", flexDirection: "column", minHeight: "100vh", boxSizing: "border-box" }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {tab === "phase" && <PhaseTab state={state} setState={setState} t={t} />}
           {tab === "scoring" && <ScoringTab state={state} setState={setState} t={t} />}
@@ -1535,6 +1603,7 @@ function Admin({ state, setState, t, onLogout }) {
     </div>
   );
 }
+
 
 // ─── PHASE TAB ────────────────────────────────────────────────────────────────
 function PhaseTab({ state, setState, t }) {
@@ -1669,6 +1738,9 @@ function ScoringTab({ state, setState, t }) {
     }));
   };
 
+  const winW = useWindowWidth();
+  const isMobile = winW < 640;
+
   const getTeam = id => state.teams.find(tm => tm.id === id);
 
   return (
@@ -1681,13 +1753,13 @@ function ScoringTab({ state, setState, t }) {
         <div style={{ display: "flex", gap: 6 }}>
           {[1, 2, 3].map(g => (
             <button key={g} onClick={() => setState(s => ({ ...s, currentGame: g }))}
-              style={bSt(g === gameNum ? t.accent : t.isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)", g === gameNum ? (t.isDark ? "#111" : "#fff") : t.text, { padding: "6px 12px", fontSize: 12 })}>
+              style={bSt(g === gameNum ? t.accent : t.isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)", g === gameNum ? (t.isDark ? "#111" : "#fff") : t.text, { padding: "6px 12px", fontSize: 12, minHeight: 44 })}>
               Game {g}{g === 3 ? " ×2" : ""}
             </button>
           ))}
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 285px", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 285px", gap: 16 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 11, color: t.sub, letterSpacing: .5, textTransform: "uppercase", marginBottom: 8 }}>Final Placement — drag to reorder</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1772,6 +1844,8 @@ function DraftTab({ state, setState, t }) {
   const gameNum = state.currentGame || 1;
   const banSystem = state.banSystem || "original";
   const isNew = banSystem === "new";
+  const winW = useWindowWidth();
+  const isMobile = winW < 640;
 
   // Pool always comes from game 1
   const savedPool = state.words?.[1] || { pool: [] };
@@ -1878,7 +1952,7 @@ function DraftTab({ state, setState, t }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : gridCols, gap: 14 }}>
         {/* Word Pool */}
         <div style={cSt(t, { padding: 16 })}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -2065,7 +2139,7 @@ function TeamsTab({ state, setState, t }) {
         </button>
       </div>
       {dirty && <div style={{ marginBottom: 12, padding: "8px 14px", borderRadius: 8, background: "rgba(247,201,72,.1)", border: "1px solid rgba(247,201,72,.3)", fontSize: 12, color: t.accent, fontWeight: 600 }}>⚠ Unsaved changes — click Save &amp; Publish to push to the public view.</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 12 }}>
         {localTeams.map(tm => (
           <div key={tm.id} style={cSt(t, { padding: 18 })}>
             <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 12, alignItems: "start" }}>
@@ -2231,19 +2305,20 @@ function AdminApp({ onLogout, onPublic }) {
   const [state, setState] = useAdminStore();
   const t = getTheme(state);
   const css = `
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-    *,*::before,*::after{box-sizing:border-box;}
-    html,body{margin:0;padding:0;}
-    body{background:${t.bg};color:${t.text};font-family:'Inter',system-ui,sans-serif;}
-    input,select,button,textarea{font-family:inherit;}
-    option{background:${t.surface};color:${t.text};}
-    details summary{list-style:none;}
-    details summary::-webkit-details-marker{display:none;}
-    ::-webkit-scrollbar{width:5px;height:5px;}
-    ::-webkit-scrollbar-thumb{background:${t.border};border-radius:4px;}
-    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
-  `;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        *,*::before,*::after{box - sizing:border-box;}
+        html,body{margin:0;padding:0;overflow-x:hidden;}
+        body{background:${t.bg};color:${t.text};font-family:'Inter',system-ui,sans-serif;}
+        input,select,button,textarea{font - family:inherit;}
+        img{max - width:100%;}
+        option{background:${t.surface};color:${t.text};}
+        details summary{list - style:none;}
+        details summary::-webkit-details-marker{display:none;}
+        ::-webkit-scrollbar{width:5px;height:5px;}
+        ::-webkit-scrollbar-thumb{background:${t.border};border-radius:4px;}
+        @keyframes shake{0 %, 100 % { transform: translateX(0) }20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+        @keyframes pulse{0 %, 100 % { opacity: 1 }50%{opacity:.25}}
+        `;
   return (
     <>
       <style>{css}</style>
@@ -2261,19 +2336,20 @@ function PublicApp({ onAdminClick }) {
   const state = usePublicStore();
   const t = getTheme(state);
   const css = `
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-    *,*::before,*::after{box-sizing:border-box;}
-    html,body{margin:0;padding:0;}
-    body{background:${t.bg};color:${t.text};font-family:'Inter',system-ui,sans-serif;}
-    input,select,button,textarea{font-family:inherit;}
-    option{background:${t.surface};color:${t.text};}
-    details summary{list-style:none;}
-    details summary::-webkit-details-marker{display:none;}
-    ::-webkit-scrollbar{width:5px;height:5px;}
-    ::-webkit-scrollbar-thumb{background:${t.border};border-radius:4px;}
-    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
-  `;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        *,*::before,*::after{box - sizing:border-box;}
+        html,body{margin:0;padding:0;overflow-x:hidden;}
+        body{background:${t.bg};color:${t.text};font-family:'Inter',system-ui,sans-serif;}
+        input,select,button,textarea{font - family:inherit;}
+        img{max - width:100%;}
+        option{background:${t.surface};color:${t.text};}
+        details summary{list - style:none;}
+        details summary::-webkit-details-marker{display:none;}
+        ::-webkit-scrollbar{width:5px;height:5px;}
+        ::-webkit-scrollbar-thumb{background:${t.border};border-radius:4px;}
+        @keyframes shake{0 %, 100 % { transform: translateX(0) }20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+        @keyframes pulse{0 %, 100 % { opacity: 1 }50%{opacity:.25}}
+        `;
   return (
     <>
       <style>{css}</style>
