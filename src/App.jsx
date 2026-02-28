@@ -19,12 +19,13 @@ const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "";
 const REGISTRATION_FORM_URL = import.meta.env.VITE_REGISTRATION_FORM_URL || "";
 // Set VITE_REGISTRATION_LOCKED=true in .env to hide the registration button entirely on all public screens
 const REGISTRATION_LOCKED_DEFAULT = import.meta.env.VITE_REGISTRATION_LOCKED === "true";
-const BASE_POINTS = [12, 10, 8, 6, 4, 2, 1, 0];
-const GAME_MULTIPLIERS = { 1: 1, 2: 1, 3: 2 };
+const BASE_POINTS = [12, 10, 8, 6, 4, 2, 1, 0];          // Games 1–3
+const GAME4_BASE_POINTS = [12, 10, 8, 6, 4, 0, 0, 0];   // Game 4: only top 5 score
+const GAME_MULTIPLIERS = { 1: 1, 2: 1, 3: 2, 4: 1 };
 const MAX_TEAMS = 8;
 const STORAGE_KEY = "quiplash_v4";
 
-const PHASES = [
+const ALL_PHASES = [
   { id: "pregame", label: "Pre-Game", step: 0, game: null, type: "setup" },
   { id: "draft_1", label: "Game 1 — Draft", step: 1, game: 1, type: "draft" },
   { id: "game_1", label: "Game 1 — Playing", step: 2, game: 1, type: "game" },
@@ -34,8 +35,19 @@ const PHASES = [
   { id: "results_2", label: "Game 2 — Results", step: 6, game: 2, type: "results" },
   { id: "draft_3", label: "Game 3 — Draft", step: 7, game: 3, type: "draft" },
   { id: "game_3", label: "Game 3 — Playing", step: 8, game: 3, type: "game" },
-  { id: "podium", label: "Podium", step: 9, game: null, type: "podium" },
+  { id: "results_3", label: "Game 3 — Results", step: 9, game: 3, type: "results" },
+  { id: "draft_4", label: "Game 4 — Draft", step: 10, game: 4, type: "draft" },
+  { id: "game_4", label: "Game 4 — Playing", step: 11, game: 4, type: "game" },
+  { id: "results_4", label: "Game 4 — Results", step: 12, game: 4, type: "results" },
+  { id: "podium", label: "Podium", step: 13, game: null, type: "podium" },
 ];
+// PHASES is derived at runtime — Game 4 phases are filtered out when game4Enabled is false.
+// Use getPhases(state) instead of PHASES directly in components that need the filtered list.
+const PHASES = ALL_PHASES; // kept for phaseOf() lookup (all IDs must resolve)
+function getPhases(state) {
+  if (state?.game4Enabled) return ALL_PHASES;
+  return ALL_PHASES.filter(p => p.game !== 4);
+}
 
 const LIGHT = { bg: "#f5f6f8", surface: "#ffffff", border: "#e2e4e9", text: "#111827", sub: "#6b7280", accent: "#e63946", accent2: "#457b9d", isDark: false };
 const DARK = { bg: "#0f0f14", surface: "#17171f", border: "#272736", text: "#f1f1f5", sub: "#8b8ba8", accent: "#f7c948", accent2: "#ff6b35", isDark: true };
@@ -91,10 +103,10 @@ function mkTeam(id) {
     playerQuote: "",     // driver personal quote
     coachQuote: "",      // coach personal quote
     description: "",     // team description/bio
-    strikes: [0, 0, 0],       // per-game, reset each game
-    bonusPoints: [0, 0, 0],   // meta wins per game
-    placements: [null, null, null],
-    dnf: [false, false, false],
+    strikes: [0, 0, 0, 0],       // per-game, reset each game
+    bonusPoints: [0, 0, 0, 0],   // meta wins per game
+    placements: [null, null, null, null],
+    dnf: [false, false, false, false],
   };
 }
 
@@ -112,10 +124,12 @@ function mkDefault() {
       1: { pool: [], banned: [], assignments: {} },
       2: { pool: [], banned: [], assignments: {} },
       3: { pool: [], banned: [], assignments: {} },
+      4: { pool: [], banned: [], assignments: {} },
     },
     completedGames: [],
     banSystem: "original", // "original" | "new"
     registrationLocked: REGISTRATION_LOCKED_DEFAULT,
+    game4Enabled: false,
   };
 }
 
@@ -132,8 +146,9 @@ function buildEffPlacements(orderedIds, dnfSet) {
 function gameScore(team, gi) {
   if (team.dnf[gi]) return 0;
   const p = team.placements[gi];
-  if (p === null) return 0;
-  return (BASE_POINTS[p] ?? 0) * GAME_MULTIPLIERS[gi + 1];
+  if (p === null || p === undefined) return 0;
+  const pts = gi === 3 ? (GAME4_BASE_POINTS[p] ?? 0) : (BASE_POINTS[p] ?? 0);
+  return pts * GAME_MULTIPLIERS[gi + 1];
 }
 
 function strikeDed(s) {
@@ -143,9 +158,9 @@ function strikeDed(s) {
   return 0;
 }
 
-function teamTotal(tm) {
+function teamTotal(tm, numGames = 4) {
   let tot = 0;
-  for (let g = 0; g < 3; g++) {
+  for (let g = 0; g < numGames; g++) {
     tot += gameScore(tm, g);
     tot += tm.bonusPoints?.[g] || 0;
     tot += strikeDed(tm.strikes?.[g] || 0);
@@ -153,7 +168,7 @@ function teamTotal(tm) {
   return Math.max(0, tot);
 }
 
-function teamBonus(tm) { return (tm.bonusPoints || [0, 0, 0]).reduce((a, b) => a + b, 0); }
+function teamBonus(tm) { return (tm.bonusPoints || [0, 0, 0, 0]).reduce((a, b) => a + b, 0); }
 
 function rankTeams(teams) {
   return [...teams].sort((a, b) => {
@@ -162,7 +177,7 @@ function rankTeams(teams) {
   });
 }
 
-function phaseOf(id) { return PHASES.find(p => p.id === id) || PHASES[0]; }
+function phaseOf(id) { return ALL_PHASES.find(p => p.id === id) || ALL_PHASES[0]; }
 
 // ─── STORAGE + SYNC (Supabase Realtime) ──────────────────────────────────────
 // Requires env vars: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
@@ -1373,6 +1388,7 @@ function PublicView({ state, onAdminClick }) {
     </>
   );
   const getPhaseStats = (tm, ph) => {
+    const numGames = state.game4Enabled ? 4 : 3;
     if (ph.type === "setup" || ph.id === "draft_1") return { tot: 0, bon: 0, allS: 0 };
     if (ph.type === "game") {
       const gi = ph.game - 1;
@@ -1384,9 +1400,9 @@ function PublicView({ state, onAdminClick }) {
     // Cumulative up to last finished game
     let limit = ph.game;
     if (ph.type === "draft") limit = ph.game - 1;
-    if (ph.type === "podium") limit = 3;
+    if (ph.type === "podium") limit = numGames;
     let tot = 0, bon = 0, allS = 0;
-    for (let g = 0; g < Math.min(3, limit); g++) {
+    for (let g = 0; g < Math.min(numGames, limit); g++) {
       tot += gameScore(tm, g) + (tm.bonusPoints?.[g] || 0) + strikeDed(tm.strikes?.[g] || 0);
       bon += tm.bonusPoints?.[g] || 0;
       allS += tm.strikes?.[g] || 0;
@@ -1418,7 +1434,7 @@ function PublicView({ state, onAdminClick }) {
           {state.tournamentLogo && <img src={state.tournamentLogo} alt="" style={{ height: 58, objectFit: "contain", marginBottom: 12 }} />}
           <h1 style={{ margin: 0, fontSize: "clamp(18px,4vw,42px)", fontWeight: 800, color: t.text, letterSpacing: -1 }}>{state.tournamentName}</h1>
           <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
-            {[1, 2, 3].map(g => {
+            {[1, 2, 3, ...(state.game4Enabled ? [4] : [])].map(g => {
               const done = state.completedGames?.includes(g);
               const active = phase.game === g;
               return <div key={g} style={{ padding: "4px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: done ? t.accent : active ? t.isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.06)" : "transparent", color: done ? (t.isDark ? "#111" : "#fff") : active ? t.accent : t.sub, border: `1.5px solid ${active ? t.accent : done ? t.accent : t.border}` }}>Game {g}{g === 3 ? " (×2)" : ""}{done ? " ✓" : ""}</div>;
@@ -1478,7 +1494,7 @@ function PublicView({ state, onAdminClick }) {
                   </div>
                 </div>
               </div>
-              <p style={{ textAlign: "center", marginTop: 18, fontSize: 11, color: t.sub }}>Tiebreaker: Total Bonus Points · Game 3 = ×2 pts</p>
+              <p style={{ textAlign: "center", marginTop: 18, fontSize: 11, color: t.sub }}>Tiebreaker: Total Bonus Points · Game 3 = ×2 pts{state.game4Enabled ? " · Game 4 = ×1 pts" : ""}</p>
             </>
           )}
 
@@ -1607,7 +1623,8 @@ function Admin({ state, setState, t, onLogout }) {
 
 // ─── PHASE TAB ────────────────────────────────────────────────────────────────
 function PhaseTab({ state, setState, t }) {
-  const idx = PHASES.findIndex(p => p.id === state.currentPhase);
+  const phases = getPhases(state);
+  const idx = phases.findIndex(p => p.id === state.currentPhase);
   const go = (id) => {
     const ph = phaseOf(id);
     setState(s => {
@@ -1616,7 +1633,7 @@ function PhaseTab({ state, setState, t }) {
       if (ph.type === "draft" && ph.game != null) {
         const gi = ph.game - 1;
         teams = s.teams.map(tm => {
-          const ns = [...(tm.strikes || [0, 0, 0])];
+          const ns = [...(tm.strikes || [0, 0, 0, 0])];
           const nd = [...tm.dnf];
           ns[gi] = 0; nd[gi] = false;
           return { ...tm, strikes: ns, dnf: nd };
@@ -1633,12 +1650,12 @@ function PhaseTab({ state, setState, t }) {
         <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: .5, color: t.sub, textTransform: "uppercase", marginBottom: 4 }}>Currently Showing</div>
         <div style={{ fontSize: 24, fontWeight: 800, color: t.accent, marginBottom: 14 }}>{phaseOf(state.currentPhase).label}</div>
         <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-          <button onClick={() => { if (idx > 0) go(PHASES[idx - 1].id); }} disabled={idx === 0} style={{ ...bSt(t.isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)", t.text, { padding: "9px 22px", opacity: idx === 0 ? .3 : 1 }) }}>← Back</button>
-          <button onClick={() => { if (idx < PHASES.length - 1) go(PHASES[idx + 1].id); }} disabled={idx === PHASES.length - 1} style={{ ...bSt(t.accent, t.isDark ? "#111" : "#fff", { padding: "9px 28px", opacity: idx === PHASES.length - 1 ? .4 : 1 }) }}>Next →</button>
+          <button onClick={() => { if (idx > 0) go(phases[idx - 1].id); }} disabled={idx === 0} style={{ ...bSt(t.isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)", t.text, { padding: "9px 22px", opacity: idx === 0 ? .3 : 1 }) }}>← Back</button>
+          <button onClick={() => { if (idx < phases.length - 1) go(phases[idx + 1].id); }} disabled={idx === phases.length - 1} style={{ ...bSt(t.accent, t.isDark ? "#111" : "#fff", { padding: "9px 28px", opacity: idx === phases.length - 1 ? .4 : 1 }) }}>Next →</button>
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {PHASES.map((ph, i) => {
+        {phases.map((ph, i) => {
           const cur = ph.id === state.currentPhase;
           const past = i < idx;
           return (
@@ -1664,7 +1681,8 @@ function ScoringTab({ state, setState, t }) {
   // Per-game order — each game has its own independent drag ordering
   const [orders, setOrders] = useState(() => {
     const init = {};
-    [1, 2, 3].forEach(g => {
+    const gamesToInit = state.game4Enabled ? [1, 2, 3, 4] : [1, 2, 3];
+    gamesToInit.forEach(g => {
       const gi = g - 1;
       const hasSaved = state.teams.some(tm => tm.placements[gi] !== null && tm.placements[gi] !== undefined);
       if (hasSaved) {
@@ -1718,7 +1736,7 @@ function ScoringTab({ state, setState, t }) {
     setState(s => ({
       ...s, teams: s.teams.map(tm => {
         if (tm.id !== teamId) return tm;
-        const ns = [...(tm.strikes || [0, 0, 0])];
+        const ns = [...(tm.strikes || [0, 0, 0, 0])];
         ns[gIdx] = Math.max(0, Math.min((ns[gIdx] || 0) + delta, 3));
         const nd = [...tm.dnf];
         nd[gIdx] = ns[gIdx] >= 3;
@@ -1731,7 +1749,7 @@ function ScoringTab({ state, setState, t }) {
     setState(s => ({
       ...s, teams: s.teams.map(tm => {
         if (tm.id !== teamId) return tm;
-        const nb = [...(tm.bonusPoints || [0, 0, 0])];
+        const nb = [...(tm.bonusPoints || [0, 0, 0, 0])];
         nb[gIdx] = Math.max(0, (nb[gIdx] || 0) + delta);
         return { ...tm, bonusPoints: nb };
       })
@@ -1748,10 +1766,12 @@ function ScoringTab({ state, setState, t }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ margin: 0, fontWeight: 800, fontSize: 20, color: t.text }}>Game {gameNum} Scoring</h2>
-          <p style={{ margin: "2px 0 0", color: t.sub, fontSize: 13 }}>{gameNum === 3 ? "×2 multiplier" : "Base points"} · Drag to set placement · 3 strikes this game = DNF</p>
+          <p style={{ margin: "2px 0 0", color: t.sub, fontSize: 13 }}>
+            {gameNum === 3 ? "×2 multiplier" : gameNum === 4 ? "Normal ×1 pts · Top 5 only" : "Base points"} · Drag to set placement · 3 strikes this game = DNF
+          </p>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {[1, 2, 3].map(g => (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {[1, 2, 3, ...(state.game4Enabled ? [4] : [])].map(g => (
             <button key={g} onClick={() => setState(s => ({ ...s, currentGame: g }))}
               style={bSt(g === gameNum ? t.accent : t.isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)", g === gameNum ? (t.isDark ? "#111" : "#fff") : t.text, { padding: "6px 12px", fontSize: 12, minHeight: 44 })}>
               Game {g}{g === 3 ? " ×2" : ""}
@@ -1767,7 +1787,7 @@ function ScoringTab({ state, setState, t }) {
               const tm = getTeam(tid); if (!tm) return null;
               const isDnf = dnfSet.has(tid);
               const pIdx = eff[tid];
-              const rawBase = pIdx !== null ? (BASE_POINTS[pIdx] ?? 0) : 0;
+              const rawBase = pIdx !== null ? ((gameNum === 4 ? GAME4_BASE_POINTS : BASE_POINTS)[pIdx] ?? 0) : 0;
               const pts = isDnf ? 0 : rawBase * GAME_MULTIPLIERS[gameNum];
               const sThis = tm.strikes?.[gIdx] || 0;
               return (
@@ -2199,6 +2219,7 @@ function SettingsTab({ state, setState, t }) {
       accent: state.accent,
       accent2: state.accent2,
       banSystem: state.banSystem || "original",
+      game4Enabled: state.game4Enabled || false,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
     setState(fresh);
@@ -2289,11 +2310,36 @@ function SettingsTab({ state, setState, t }) {
           {" "}<span style={{ opacity: .6 }}>Default from .env: VITE_REGISTRATION_LOCKED={String(REGISTRATION_LOCKED_DEFAULT)}</span>
         </div>
       </div>
+      {/* ── GAME 4 TOGGLE ── */}
+      <div style={cSt(t, { padding: 20, marginBottom: 12 })}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: t.text }}>Game 4</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[{ v: false, label: "Disabled" }, { v: true, label: "Enabled" }].map(opt => (
+              <button key={String(opt.v)} onClick={() => setState(s => ({ ...s, game4Enabled: opt.v }))}
+                style={bSt(
+                  opt.v === (state.game4Enabled || false)
+                    ? (opt.v ? "#22c55e" : t.isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)")
+                    : (t.isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)"),
+                  opt.v === (state.game4Enabled || false) ? (opt.v ? (t.isDark ? "#111" : "#fff") : t.text) : t.sub,
+                  { fontSize: 12, padding: "6px 14px" }
+                )}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: t.sub }}>Adds a 4th game with <strong style={{ color: t.text }}>normal ×1 points, top 5 only</strong> before the Podium. Positions 6–8 earn 0 pts. When enabled, Game&nbsp;4 phases (Draft, Playing, Results) appear in Phase Control and the Scoring tab.</p>
+        <div style={{ padding: "8px 12px", borderRadius: 8, background: t.isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.03)", border: `1px solid ${t.border}`, fontSize: 11, color: t.sub }}>
+          <span style={{ fontWeight: 600, color: state.game4Enabled ? "#22c55e" : t.sub }}>{state.game4Enabled ? "Enabled" : "Disabled"}</span>
+          {" — "}{state.game4Enabled ? "Game 4 phases are active and visible in Phase Control." : "Game 4 phases are hidden. Only Games 1–3 are used."}
+        </div>
+      </div>
       <div style={cSt(t, { padding: 20, borderColor: "rgba(239,68,68,.22)" })}>
         <div style={{ fontWeight: 700, fontSize: 14, color: "#ef4444", marginBottom: 6 }}>Reset Tournament Data</div>
         <p style={{ margin: "0 0 12px", fontSize: 13, color: t.sub }}>Clears all scores, strikes, placements, words, and bonus points. Team names and images are kept.</p>
         <button onClick={doReset} style={bSt("rgba(239,68,68,.1)", "#ef4444", { border: "1px solid rgba(239,68,68,.28)", fontSize: 13 })}>
-          <Ico name="trash" size={14} /> Reset All Scores & Data
+          <Ico name="trash" size={14} /> Reset All Scores &amp; Data
         </button>
       </div>
     </div>
