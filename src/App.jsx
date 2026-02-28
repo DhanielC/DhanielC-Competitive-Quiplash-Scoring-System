@@ -929,23 +929,29 @@ function Podium({ state, t }) {
         <CoachChampionshipBoard state={state} t={t} vis={vis} />
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
-            {trio.map(({ tm, rank, h }, i) => (
-              <div key={tm.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", opacity: vis ? 1 : 0, transform: vis ? "translateY(0)" : "translateY(60px)", transition: `all .7s cubic-bezier(.34,1.56,.64,1) ${.1 + i * .15}s` }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginBottom: 10 }}>
-                  <Ico name="medal" size={rank === 1 ? 34 : 24} color={medalColor[rank]} />
-                  <Av src={tm.teamLogo} name={tm.name} size={rank === 1 ? 70 : 52} />
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontWeight: 800, fontSize: rank === 1 ? 17 : 14, color: t.text }}>{tm.name}</div>
-                    {tm.playerName && <div style={{ fontSize: 11, color: t.sub }}>{tm.playerName}</div>}
+          {/* Podium: alignItems flex-end so all 3 platform blocks share the same baseline */}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+            {trio.map(({ tm, rank, h }, i) => {
+              const w = rank === 1 ? 150 : 120;
+              return (
+                <div key={tm.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: w, opacity: vis ? 1 : 0, transform: vis ? "translateY(0)" : "translateY(60px)", transition: `all .7s cubic-bezier(.34,1.56,.64,1) ${.1 + i * .15}s` }}>
+                  {/* Info above the platform */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, marginBottom: 8, width: "100%", padding: "0 4px", boxSizing: "border-box" }}>
+                    <Ico name="medal" size={rank === 1 ? 32 : 22} color={medalColor[rank]} />
+                    <Av src={tm.teamLogo} name={tm.name} size={rank === 1 ? 68 : 50} />
+                    <div style={{ textAlign: "center", width: "100%" }}>
+                      <div style={{ fontWeight: 800, fontSize: rank === 1 ? 14 : 12, color: t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tm.name}</div>
+                      {tm.playerName && <div style={{ fontSize: 10, color: t.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tm.playerName}</div>}
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: rank === 1 ? 22 : 17, color: rank === 1 ? t.accent : t.text }}>{teamTotal(tm)} pts</div>
                   </div>
-                  <div style={{ fontWeight: 800, fontSize: rank === 1 ? 26 : 20, color: rank === 1 ? t.accent : t.text }}>{teamTotal(tm)} pts</div>
+                  {/* Platform block — sits at the bottom, height varies per rank */}
+                  <div style={{ width: "100%", height: h, borderRadius: "10px 10px 0 0", background: rank === 1 ? t.accent + "18" : t.isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.04)", border: `2px solid ${rank === 1 ? t.accent : t.border}`, borderBottom: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ fontSize: rank === 1 ? 64 : 48, fontWeight: 900, color: t.border, opacity: .3 }}>{rank}</span>
+                  </div>
                 </div>
-                <div style={{ width: rank === 1 ? 150 : 120, height: h, borderRadius: "10px 10px 0 0", background: rank === 1 ? t.accent + "18" : t.isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.04)", border: `2px solid ${rank === 1 ? t.accent : t.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontSize: rank === 1 ? 64 : 48, fontWeight: 900, color: t.border, opacity: .3 }}>{rank}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {ranked.length > 3 && (
             <div style={{ marginTop: 32, width: "100%", maxWidth: 480 }}>
